@@ -1,2 +1,5 @@
 /target/
 **/*.rs.bk
+/rusty-tags.vi
+/test.src
+/test.dst
