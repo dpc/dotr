@@ -1,0 +1,10 @@
+[package]
+authors = ["Dawid Ciężarkiewicz <dpc@dpc.pw>"]
+name = "dotr"
+version = "0.1.0"
+[dependencies]
+clap = "*"
+walkdir = "*"
+slog = { version = "2.0.10", features = ["max_level_trace", "release_max_level_trace"]}
+slog-term = "*"
+slog-async = "*"
