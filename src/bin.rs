@@ -1,4 +1,4 @@
-//! `dotr` is the simplest dotfile manager
+//! `dotr` is a very simple dotfile manager
 //!
 //! It supports `link` and `unlink` operations and couple
 //! of basic flags like `force`.
@@ -312,7 +312,7 @@ impl Options {
             (@arg SRC_DIR: -s --src +takes_value "Path to source. Default: .")
             (@arg VERBOSE: -v ... "Increase debugging level")
             (@arg DRY_RUN: --dry... "Dry run")
-            (@arg DRY_RUN: --force ... "Force overwrite/delete")
+            (@arg FORCE: --force ... "Force overwrite/delete")
             (@subcommand link =>
              (about: "Link to files from SRC_DIR in DST_DIR")
             )

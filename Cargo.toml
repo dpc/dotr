@@ -2,9 +2,21 @@
 authors = ["Dawid Ciężarkiewicz <dpc@dpc.pw>"]
 name = "dotr"
 version = "0.1.0"
+description = "Very simple dotfile manager"
+keywords = ["rc", "dot", "dotfile"]
+license = "MPL-2.0"
+documentation = "https://docs.rs/dotr/"
+homepage = "https://github.com/dpc/dotr"
+repository = "https://github.com/dpc/dotr"
+readme = "README.md"
+
+[[bin]]
+name = "dotr"
+path = "src/bin.rs"
+
 [dependencies]
-clap = "*"
-walkdir = "*"
-slog = { version = "2.0.10", features = ["max_level_trace", "release_max_level_trace"]}
-slog-term = "*"
-slog-async = "*"
+clap = "2.26"
+walkdir = "1"
+slog = { version = "2", features = ["max_level_trace", "release_max_level_trace"]}
+slog-term = "2"
+slog-async = "2"
