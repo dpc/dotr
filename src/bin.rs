@@ -18,7 +18,7 @@
 //! ### Usage:
 //!
 //! ```norust
-//! dotr --help
+//! dotr help
 //! ```
 //!
 //! ### TODO:
@@ -42,18 +42,6 @@ use slog::Drain;
 fn create_logger(verbosity: Option<u32>) -> slog::Logger {
     match verbosity {
         None => slog::Logger::root(slog::Discard, o!()),
-        Some(v) if v > 4 => {
-            let drain = slog_term::term_full();
-            // at level 4, use synchronous logger so not to loose any
-            // logging messages
-            let drain = std::sync::Mutex::new(drain);
-            let log = slog::Logger::root(drain.fuse(), o!());
-            info!(
-                log,
-                "Using synchronized logging, that we'll be slightly slower."
-            );
-            log
-        }
         Some(v) => {
             let level = match v {
                 0 => slog::Level::Warning,
@@ -61,8 +49,8 @@ fn create_logger(verbosity: Option<u32>) -> slog::Logger {
                 2 => slog::Level::Debug,
                 _ => slog::Level::Trace,
             };
-            let drain = slog_term::term_full();
-            let drain = slog_async::Async::default(drain.fuse());
+            let drain = slog_term::term_compact();
+            let drain = std::sync::Mutex::new(drain);
             let drain = slog::LevelFilter(drain, level);
             slog::Logger::root(drain.fuse(), o!())
         }
@@ -100,7 +88,7 @@ impl Dotr {
     }
 
     fn link(&self, src_base: &Path, dst_base: &Path) -> io::Result<()> {
-        debug!(self.log, "Starting link operation"; "src" => src_base.display(), "dst" => dst_base.display());
+        info!(self.log, "Starting link operation"; "src" => src_base.display(), "dst" => dst_base.display());
 
         if !dst_base.exists() {
             return Err(io::Error::new(
@@ -129,59 +117,72 @@ impl Dotr {
             let src_rel = src.strip_prefix(&src_base).unwrap();
             let dst = dst_base.join(src_rel);
 
-            let src_metadata = src.metadata()?;
+            let src_metadata = src.symlink_metadata()?;
             let src_type = src_metadata.file_type();
+
+            let log = self.log.new(o!("src" => format!("{}", src.display()), "dst" => format!("{}", dst.display())));
 
             if src_type.is_dir() {
                 continue;
             } else if src_type.is_file() {
-                trace!(self.log, "Link to a file"; "src" => src.display(), "dst" => dst.display());
-                if dst.exists() {
+                trace!(log, "Source is a file"; );
+                if dst.exists() || dst.symlink_metadata().is_ok() {
                     if self.force {
-                        fs::remove_file(&dst)?;
+                        if !self.dry_run {
+                            debug!(log, "Force removing destination");
+                            fs::remove_file(&dst)?;
+                        } else {
+                            debug!(log, "Force removing destination (dry-run)");
+                        }
                     } else {
-                        warn!(self.log, "Destination already exists"; "dst" => dst.display());
-                        continue
+                        warn!(log, "Destination already exists");
+                        continue;
                     }
                 } else {
                     if !self.dry_run {
+                        trace!(log, "Creating a base directory (if doesn't exist)");
                         fs::create_dir_all(dst.parent().unwrap())?;
                     }
                 }
 
                 if !self.dry_run {
+                    trace!(log, "Creating symlink to a src file");
                     std::os::unix::fs::symlink(&src, &dst)?;
                 }
             } else if src_type.is_symlink() {
                 let src_link = src.read_link()?;
-                trace!(self.log, "Duplicate symlink"; "src" => src.display(), "dst" =>
-                       dst.display(), "link-dst" => &src_link.display());
-                if dst.exists() {
+                trace!(log, "Source is a symlink"; "src-link" => &src_link.display());
+                if dst.exists() || dst.symlink_metadata().is_ok() {
                     if self.force {
                         if !self.dry_run {
+                            debug!(log, "Force removing destination");
                             fs::remove_file(&dst)?;
+                        } else {
+                            debug!(log, "Force removing destination (dry-run)");
                         }
                     } else {
-                        warn!(self.log, "Destination already exists"; "dst" => dst.display());
-                        continue
+                        warn!(log, "Destination already exists");
+                        continue;
                     }
                 } else {
                     if !self.dry_run {
+                        trace!(log, "Creating a base directory (if doesn't exist)");
                         fs::create_dir_all(dst.parent().unwrap())?;
                     }
                 }
                 if !self.dry_run {
+                    trace!(log, "Duplicating symlink"; "src-link" => src_link.display());
                     std::os::unix::fs::symlink(&src_link, &dst)?;
                 }
             } else {
-                warn!(self.log, "Skipping unknown source file type"; "src" => src.display());
+                warn!(log, "Skipping unknown source file type");
             }
         }
 
         Ok(())
     }
     fn unlink(&self, src_base: &Path, dst_base: &Path) -> io::Result<()> {
-        debug!(self.log, "Starting unlink operation"; "src" => src_base.display(), "dst" => dst_base.display());
+        info!(self.log, "Starting unlink operation"; "src" => src_base.display(), "dst" => dst_base.display());
 
         let dst_base = dst_base.canonicalize()?;
         let src_base = src_base.canonicalize()?;
@@ -196,82 +197,95 @@ impl Dotr {
             let src_rel = src.strip_prefix(&src_base).unwrap();
             let dst = dst_base.join(src_rel);
 
-            let src_metadata = src.metadata()?;
+            let src_metadata = src.symlink_metadata()?;
             let src_type = src_metadata.file_type();
 
+            let log = self.log.new(o!("src" => format!("{}", src.display()), "dst" => format!("{}", dst.display())));
             if src_type.is_dir() {
                 continue;
             } else if src_type.is_file() {
-                trace!(self.log, "Unlink a file"; "src" => src.display(), "dst" => dst.display());
-                if dst.exists() {
+                trace!(log, "Unlink a file");
+                let dst_metadata = dst.symlink_metadata();
+                // exists follows symlinks :/
+                if dst.exists() || dst_metadata.is_ok() {
+                    let dst_metadata = dst_metadata?;
                     if self.force {
                         if !self.dry_run {
+                            debug!(log, "Force removing");
                             fs::remove_file(&dst)?;
-                            continue
+                            continue;
+                        } else {
+                            debug!(log, "Force removing (dry run)");
+
                         }
                     } else {
-                        let dst_metadata = dst.metadata()?;
                         if dst_metadata.file_type().is_file() {
-                            warn!(self.log, "Destination already exists and is a file"; "dst" => dst.display());
+                            warn!(log, "Destination already exists and is a file");
                             continue;
                         } else if dst_metadata.file_type().is_dir() {
-                            warn!(self.log, "Destination already exists and is a directory"; "dst" => dst.display());
+                            warn!(log, "Destination already exists and is a directory");
                             continue;
-                        } else if  dst_metadata.file_type().is_symlink() {
+                        } else if dst_metadata.file_type().is_symlink() {
                             let dst_link = dst.read_link()?;
                             if dst_link != src {
-                                warn!(self.log, "Destination already exists and is a symlink pointing to something else"; "dst" => dst.display());
-                                continue
+                                warn!(log, "Destination already exists and is a symlink pointing to something else");
+                                continue;
                             } else {
                                 if !self.dry_run {
                                     fs::remove_file(&dst)?;
                                 }
                             }
                         } else {
-                            warn!(self.log, "Destination exists and is of unknown file type"; "dst" => dst.display());
+                            warn!(log, "Destination exists and is of unknown file type");
                         }
                     }
                 } else {
-                    debug!(self.log, "Destination doesn't exist - nothing to unlink";  "dst" => dst.display());
-                    continue
+                    debug!(log, "Destination doesn't exist - nothing to unlink");
+                    continue;
                 }
             } else if src_type.is_symlink() {
                 let src_link = src.read_link()?;
-                trace!(self.log, "Unlink a symlink"; "src" => src.display(), "dst" => dst.display());
-                if dst.exists() {
+                trace!(log, "Unlink a symlink");
+                let dst_metadata = dst.symlink_metadata();
+                // exists follows symlinks :/
+                if dst.exists() || dst_metadata.is_ok() {
+                    let dst_metadata = dst_metadata?;
                     if self.force {
                         if !self.dry_run {
                             fs::remove_file(&dst)?;
-                            continue
+                            continue;
                         }
                     } else {
-                        let dst_metadata = dst.metadata()?;
                         if dst_metadata.file_type().is_file() {
-                            warn!(self.log, "Destination already exists and is a file"; "dst" => dst.display());
+                            warn!(log, "Destination already exists and is a file");
                             continue;
                         } else if dst_metadata.file_type().is_dir() {
-                            warn!(self.log, "Destination already exists and is a directory"; "dst" => dst.display());
+                            warn!(log, "Destination already exists and is a directory");
                             continue;
-                        } else if  dst_metadata.file_type().is_symlink() {
+                        } else if dst_metadata.file_type().is_symlink() {
                             let dst_link = dst.read_link()?;
                             if dst_link != src_link {
-                                warn!(self.log, "Destination already exists and is a symlink pointing to something else"; "dst" => dst.display());
-                                continue
+                                warn!(log,
+                                      "Destination already exists and is a symlink pointing to something else";
+                                      "dst-link" => dst_link.display(),
+                                      "src-link" => src_link.display(),
+                                      );
+                                continue;
                             } else {
                                 if !self.dry_run {
                                     fs::remove_file(&dst)?;
                                 }
                             }
                         } else {
-                            warn!(self.log, "Destination exists and is of unknown file type"; "dst" => dst.display());
+                            warn!(log, "Destination exists and is of unknown file type");
                         }
                     }
                 } else {
-                    debug!(self.log, "Destination doesn't exist - nothing to unlink";  "dst" => dst.display());
-                    continue
+                    debug!(log, "Destination doesn't exist - nothing to unlink");
+                    continue;
                 }
             } else {
-                warn!(self.log, "Skipping unknown source file type"; "src" => src.display());
+                warn!(log, "Skipping unknown source file type");
             }
         }
 
@@ -342,10 +356,10 @@ impl Options {
         let log = create_logger(Some(matches.occurrences_of("VERBOSE") as u32));
 
         match matches.subcommand() {
-            ("link ", _) => {
+            ("link", _) => {
                 command = Some(Command::Link);
             }
-            ("unlink ", _) => {
+            ("unlink", _) => {
                 command = Some(Command::Unlink);
             }
             _ => panic!("Unrecognized subcommand"),
