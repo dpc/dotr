@@ -34,7 +34,7 @@ extern crate slog_term;
 extern crate walkdir;
 
 
-use walkdir::WalkDir;
+use walkdir::{WalkDir, WalkDirIterator};
 use std::path::{Path, PathBuf};
 use std::{env, fs, io, process};
 use slog::Drain;
@@ -55,6 +55,10 @@ fn create_logger(verbosity: Option<u32>) -> slog::Logger {
             slog::Logger::root(drain.fuse(), o!())
         }
     }
+}
+
+fn should_traverse(de: &walkdir::DirEntry) -> bool {
+    de.path().is_dir() && de.path().file_name().and_then(|s| s.to_str()) != Some(".git")
 }
 
 struct Dotr {
@@ -110,7 +114,11 @@ impl Dotr {
         assert!(dst_base.is_absolute());
         assert!(src_base.is_absolute());
 
-        for src in WalkDir::new(&src_base).into_iter().filter_map(|e| e.ok()) {
+        for src in WalkDir::new(&src_base)
+            .into_iter()
+            .filter_entry(should_traverse)
+            .filter_map(|e| e.ok())
+        {
             trace!(self.log, "Walking path"; "path" => src.path().display());
 
             let src = src.path();
@@ -120,7 +128,9 @@ impl Dotr {
             let src_metadata = src.symlink_metadata()?;
             let src_type = src_metadata.file_type();
 
-            let log = self.log.new(o!("src" => format!("{}", src.display()), "dst" => format!("{}", dst.display())));
+            let log = self.log.new(
+                o!("src" => format!("{}", src.display()), "dst" => format!("{}", dst.display())),
+            );
 
             if src_type.is_dir() {
                 continue;
@@ -190,7 +200,11 @@ impl Dotr {
         assert!(dst_base.is_absolute());
         assert!(src_base.is_absolute());
 
-        for src in WalkDir::new(&src_base).into_iter().filter_map(|e| e.ok()) {
+        for src in WalkDir::new(&src_base)
+            .into_iter()
+            .filter_entry(should_traverse)
+            .filter_map(|e| e.ok())
+        {
             trace!(self.log, "Walking path"; "path" => src.path().display());
 
             let src = src.path();
@@ -200,7 +214,9 @@ impl Dotr {
             let src_metadata = src.symlink_metadata()?;
             let src_type = src_metadata.file_type();
 
-            let log = self.log.new(o!("src" => format!("{}", src.display()), "dst" => format!("{}", dst.display())));
+            let log = self.log.new(
+                o!("src" => format!("{}", src.display()), "dst" => format!("{}", dst.display())),
+            );
             if src_type.is_dir() {
                 continue;
             } else if src_type.is_file() {
@@ -216,7 +232,6 @@ impl Dotr {
                             continue;
                         } else {
                             debug!(log, "Force removing (dry run)");
-
                         }
                     } else {
                         if dst_metadata.file_type().is_file() {
@@ -228,7 +243,10 @@ impl Dotr {
                         } else if dst_metadata.file_type().is_symlink() {
                             let dst_link = dst.read_link()?;
                             if dst_link != src {
-                                warn!(log, "Destination already exists and is a symlink pointing to something else");
+                                warn!(
+                                    log,
+                                    "Destination already exists and is a symlink pointing to something else"
+                                );
                                 continue;
                             } else {
                                 if !self.dry_run {
