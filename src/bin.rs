@@ -58,7 +58,7 @@ fn create_logger(verbosity: Option<u32>) -> slog::Logger {
 }
 
 fn should_traverse(de: &walkdir::DirEntry) -> bool {
-    de.path().is_dir() && de.path().file_name().and_then(|s| s.to_str()) != Some(".git")
+    !de.path().is_dir() || de.path().file_name().and_then(|s| s.to_str()) != Some(".git")
 }
 
 struct Dotr {
