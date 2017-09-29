@@ -1,7 +1,7 @@
 [package]
 authors = ["Dawid Ciężarkiewicz <dpc@dpc.pw>"]
 name = "dotr"
-version = "0.3.0"
+version = "0.3.1-pre"
 description = "Very simple dotfile manager"
 keywords = ["rc", "dot", "dotfile"]
 license = "MPL-2.0"
