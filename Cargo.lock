@@ -1,6 +1,6 @@
 [root]
 name = "dotr"
-version = "0.3.1-pre"
+version = "0.3.1"
 dependencies = [
  "clap 2.26.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.0.12 (registry+https://github.com/rust-lang/crates.io-index)",
