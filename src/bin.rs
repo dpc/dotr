@@ -132,6 +132,9 @@ impl Dotr {
             let src = src.path();
             let src_rel = src.strip_prefix(&src_base).unwrap();
             let dst = dst_base.join(src_rel);
+            let dst_metadata = dst.symlink_metadata().ok();
+            let dst_type = dst_metadata.map(|m| m.file_type());
+
 
             let src_metadata = src.symlink_metadata()?;
             let src_type = src_metadata.file_type();
@@ -153,7 +156,18 @@ impl Dotr {
                             debug!(log, "Force removing destination (dry-run)");
                         }
                     } else {
-                        warn!(log, "Destination already exists");
+                        if dst_type.map(|t| t.is_symlink()).unwrap_or(false) {
+                            let dst_link_dst = dst.read_link()?;
+                            if *dst_link_dst == *src {
+                                debug!(log, "Destination already points to the source");
+                                continue;
+                            } else {
+                                warn!(log, "Destination already exists and points elsewhere";
+                                      "dst_dst" => %dst_link_dst.display());
+                            }
+                        } else {
+                            warn!(log, "Destination already exists and is not a symlink");
+                        }
                         continue;
                     }
                 } else {
@@ -178,6 +192,9 @@ impl Dotr {
                         } else {
                             debug!(log, "Force removing destination (dry-run)");
                         }
+                    } else if Some(src_link.clone()) == dst.read_link().ok() {
+                        debug!(log, "Destination already points to the source (symlink source)");
+                        continue;
                     } else {
                         warn!(log, "Destination already exists");
                         continue;
