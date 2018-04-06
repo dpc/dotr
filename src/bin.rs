@@ -50,6 +50,7 @@ extern crate walkdir;
 
 use slog::Drain;
 use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -79,7 +80,7 @@ fn should_traverse(de: &walkdir::DirEntry) -> bool {
         return true;
     }
 
-    if de.path().file_name().and_then(|s| s.to_str()) == Some(".git") {
+    if de.path().file_name() == Some(OsStr::new(".git")) {
         return false;
     }
 
