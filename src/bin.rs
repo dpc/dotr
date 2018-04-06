@@ -33,11 +33,10 @@ extern crate slog_async;
 extern crate slog_term;
 extern crate walkdir;
 
-
-use walkdir::{WalkDir, WalkDirIterator};
+use slog::Drain;
 use std::path::{Path, PathBuf};
 use std::{env, fs, io, process};
-use slog::Drain;
+use walkdir::WalkDir;
 
 fn create_logger(verbosity: Option<u32>) -> slog::Logger {
     match verbosity {
@@ -59,14 +58,14 @@ fn create_logger(verbosity: Option<u32>) -> slog::Logger {
 
 fn should_traverse(de: &walkdir::DirEntry) -> bool {
     if !de.path().is_dir() {
-        return true
+        return true;
     }
 
     if de.path().file_name().and_then(|s| s.to_str()) == Some(".git") {
-        return false
+        return false;
     }
 
-    return true
+    return true;
 }
 
 struct Dotr {
@@ -135,7 +134,6 @@ impl Dotr {
             let dst_metadata = dst.symlink_metadata().ok();
             let dst_type = dst_metadata.map(|m| m.file_type());
 
-
             let src_metadata = src.symlink_metadata()?;
             let src_type = src_metadata.file_type();
 
@@ -193,7 +191,10 @@ impl Dotr {
                             debug!(log, "Force removing destination (dry-run)");
                         }
                     } else if Some(src_link.clone()) == dst.read_link().ok() {
-                        debug!(log, "Destination already points to the source (symlink source)");
+                        debug!(
+                            log,
+                            "Destination already points to the source (symlink source)"
+                        );
                         continue;
                     } else {
                         warn!(log, "Destination already exists");
@@ -378,7 +379,6 @@ impl Options {
             )
             ).setting(clap::AppSettings::SubcommandRequiredElseHelp)
             .get_matches();
-
 
         if let Some(dir) = matches.value_of_os("DST_DIR") {
             dst_dir = Some(dir.into());
