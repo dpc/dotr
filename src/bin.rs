@@ -65,7 +65,7 @@ fn should_traverse(de: &walkdir::DirEntry) -> bool {
         return false;
     }
 
-    return true;
+    true
 }
 
 struct Dotr {
@@ -168,11 +168,9 @@ impl Dotr {
                         }
                         continue;
                     }
-                } else {
-                    if !self.dry_run {
-                        trace!(log, "Creating a base directory (if doesn't exist)");
-                        fs::create_dir_all(dst.parent().unwrap())?;
-                    }
+                } else if !self.dry_run {
+                    trace!(log, "Creating a base directory (if doesn't exist)");
+                    fs::create_dir_all(dst.parent().unwrap())?;
                 }
 
                 if !self.dry_run {
@@ -200,11 +198,9 @@ impl Dotr {
                         warn!(log, "Destination already exists");
                         continue;
                     }
-                } else {
-                    if !self.dry_run {
-                        trace!(log, "Creating a base directory (if doesn't exist)");
-                        fs::create_dir_all(dst.parent().unwrap())?;
-                    }
+                } else if !self.dry_run {
+                    trace!(log, "Creating a base directory (if doesn't exist)");
+                    fs::create_dir_all(dst.parent().unwrap())?;
                 }
                 if !self.dry_run {
                     trace!(log, "Duplicating symlink"; "src-link" => src_link.display());
@@ -259,29 +255,25 @@ impl Dotr {
                         } else {
                             debug!(log, "Force removing (dry run)");
                         }
-                    } else {
-                        if dst_metadata.file_type().is_file() {
-                            warn!(log, "Destination already exists and is a file");
-                            continue;
-                        } else if dst_metadata.file_type().is_dir() {
-                            warn!(log, "Destination already exists and is a directory");
-                            continue;
-                        } else if dst_metadata.file_type().is_symlink() {
-                            let dst_link = dst.read_link()?;
-                            if dst_link != src {
-                                warn!(
+                    } else if dst_metadata.file_type().is_file() {
+                        warn!(log, "Destination already exists and is a file");
+                        continue;
+                    } else if dst_metadata.file_type().is_dir() {
+                        warn!(log, "Destination already exists and is a directory");
+                        continue;
+                    } else if dst_metadata.file_type().is_symlink() {
+                        let dst_link = dst.read_link()?;
+                        if dst_link != src {
+                            warn!(
                                     log,
                                     "Destination already exists and is a symlink pointing to something else"
                                 );
-                                continue;
-                            } else {
-                                if !self.dry_run {
-                                    fs::remove_file(&dst)?;
-                                }
-                            }
-                        } else {
-                            warn!(log, "Destination exists and is of unknown file type");
+                            continue;
+                        } else if !self.dry_run {
+                            fs::remove_file(&dst)?;
                         }
+                    } else {
+                        warn!(log, "Destination exists and is of unknown file type");
                     }
                 } else {
                     debug!(log, "Destination doesn't exist - nothing to unlink");
@@ -299,30 +291,26 @@ impl Dotr {
                             fs::remove_file(&dst)?;
                             continue;
                         }
-                    } else {
-                        if dst_metadata.file_type().is_file() {
-                            warn!(log, "Destination already exists and is a file");
-                            continue;
-                        } else if dst_metadata.file_type().is_dir() {
-                            warn!(log, "Destination already exists and is a directory");
-                            continue;
-                        } else if dst_metadata.file_type().is_symlink() {
-                            let dst_link = dst.read_link()?;
-                            if dst_link != src_link {
-                                warn!(log,
+                    } else if dst_metadata.file_type().is_file() {
+                        warn!(log, "Destination already exists and is a file");
+                        continue;
+                    } else if dst_metadata.file_type().is_dir() {
+                        warn!(log, "Destination already exists and is a directory");
+                        continue;
+                    } else if dst_metadata.file_type().is_symlink() {
+                        let dst_link = dst.read_link()?;
+                        if dst_link != src_link {
+                            warn!(log,
                                       "Destination already exists and is a symlink pointing to something else";
                                       "dst-link" => dst_link.display(),
                                       "src-link" => src_link.display(),
                                       );
-                                continue;
-                            } else {
-                                if !self.dry_run {
-                                    fs::remove_file(&dst)?;
-                                }
-                            }
-                        } else {
-                            warn!(log, "Destination exists and is of unknown file type");
+                            continue;
+                        } else if !self.dry_run {
+                            fs::remove_file(&dst)?;
                         }
+                    } else {
+                        warn!(log, "Destination exists and is of unknown file type");
                     }
                 } else {
                     debug!(log, "Destination doesn't exist - nothing to unlink");
@@ -410,21 +398,19 @@ impl Options {
 
         let dst_dir = if let Some(dir) = dst_dir {
             dir
+        } else if let Some(home) = env::var_os("HOME") {
+            Path::new(&home).into()
         } else {
-            if let Some(home) = env::var_os("HOME") {
-                Path::new(&home).into()
-            } else {
-                return Err(io::Error::new(io::ErrorKind::NotFound, "$HOME not set"));
-            }
+            return Err(io::Error::new(io::ErrorKind::NotFound, "$HOME not set"));
         };
 
         Ok(Options {
-            dst_dir: dst_dir,
-            src_dir: src_dir,
+            dst_dir,
+            src_dir,
             command: command.unwrap(),
-            dry_run: dry_run,
-            force: force,
-            log: log,
+            dry_run,
+            force,
+            log,
         })
     }
 }
