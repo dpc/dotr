@@ -16,7 +16,10 @@ path = "src/bin.rs"
 
 [dependencies]
 clap = "2"
-walkdir = "2"
+serde = "1"
+serde_derive = "1"
 slog = { version = "2", features = ["max_level_trace", "release_max_level_trace"]}
 slog-term = "2"
 slog-async = "2"
+toml = "0.4"
+walkdir = "2"

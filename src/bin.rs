@@ -28,14 +28,20 @@
 #[macro_use]
 extern crate clap;
 #[macro_use]
+extern crate serde_derive;
+#[macro_use]
 extern crate slog;
 extern crate slog_async;
 extern crate slog_term;
+extern crate toml;
 extern crate walkdir;
 
 use slog::Drain;
+use std::collections::HashSet;
+use std::fs::{self, File};
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::{env, fs, io, process};
+use std::{env, process};
 use walkdir::WalkDir;
 
 fn create_logger(verbosity: Option<u32>) -> slog::Logger {
@@ -71,6 +77,7 @@ fn should_traverse(de: &walkdir::DirEntry) -> bool {
 struct Dotr {
     force: bool,
     dry_run: bool,
+    ignore: HashSet<PathBuf>,
     log: slog::Logger,
 }
 
@@ -79,6 +86,7 @@ impl Dotr {
         Dotr {
             force: false,
             dry_run: false,
+            ignore: HashSet::new(),
             log: slog::Logger::root(slog::Discard, o!()),
         }
     }
@@ -90,6 +98,11 @@ impl Dotr {
 
     fn set_force(&mut self) -> &mut Self {
         self.force = true;
+        self
+    }
+
+    fn set_ignore(&mut self, ignore: HashSet<PathBuf>) -> &mut Self {
+        self.ignore = ignore;
         self
     }
 
@@ -130,6 +143,12 @@ impl Dotr {
 
             let src = src.path();
             let src_rel = src.strip_prefix(&src_base).unwrap();
+
+            if self.ignore.contains(src_rel) {
+                debug!(self.log, "Ignoring file"; "path" => src.display());
+                continue;
+            }
+
             let dst = dst_base.join(src_rel);
             let dst_metadata = dst.symlink_metadata().ok();
             let dst_type = dst_metadata.map(|m| m.file_type());
@@ -231,6 +250,12 @@ impl Dotr {
 
             let src = src.path();
             let src_rel = src.strip_prefix(&src_base).unwrap();
+
+            if self.ignore.contains(src_rel) {
+                debug!(self.log, "Ignoring file"; "path" => src.display());
+                continue;
+            }
+
             let dst = dst_base.join(src_rel);
 
             let src_metadata = src.symlink_metadata()?;
@@ -338,6 +363,12 @@ struct Options {
     log: slog::Logger,
     dry_run: bool,
     force: bool,
+    ignore: HashSet<PathBuf>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize)]
+struct SourceOptions {
+    ignore: Option<HashSet<PathBuf>>,
 }
 
 impl Options {
@@ -404,12 +435,31 @@ impl Options {
             return Err(io::Error::new(io::ErrorKind::NotFound, "$HOME not set"));
         };
 
+        let config_file_name = PathBuf::from("dotr.toml");
+        let config_file = src_dir.join(&config_file_name);
+        let mut ignore = HashSet::new();
+        if config_file.exists() {
+            let mut file = File::open(&config_file)?;
+            let mut string = String::new();
+            file.read_to_string(&mut string)?;
+            ignore.insert(config_file_name);
+            match toml::from_str::<SourceOptions>(&string) {
+                Ok(options) => {
+                    ignore.extend(options.ignore.into_iter().flat_map(|x| x));
+                }
+                Err(e) => {
+                    error!(log, "Unable to parse config file"; "path" => config_file.display(), "error" => %e);
+                }
+            }
+        }
+
         Ok(Options {
             dst_dir,
             src_dir,
             command: command.unwrap(),
             dry_run,
             force,
+            ignore,
             log,
         })
     }
@@ -429,6 +479,8 @@ fn run() -> io::Result<()> {
     if options.force {
         dotr.set_force();
     }
+
+    dotr.set_ignore(options.ignore);
 
     match options.command {
         Command::Link => dotr.link(&options.src_dir, &options.dst_dir)?,
