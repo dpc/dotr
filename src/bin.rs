@@ -21,6 +21,18 @@
 //! dotr help
 //! ```
 //!
+//! ### Ignoring files:
+//!
+//! `dotr` can skip some of the files in the source directory. To configure that,
+//! create a file called `dotr.toml` with an `ignore` key set to an array of
+//! files to be excluded:
+//!
+//! ```toml
+//! ignore = ["LICENSE", "user.js"]
+//! ```
+//!
+//! The `dotr.toml` file will be loaded, if present, from the source directory.
+//!
 //! ### TODO:
 //!
 //! * Make it a separate library + binary
@@ -28,16 +40,22 @@
 #[macro_use]
 extern crate clap;
 #[macro_use]
+extern crate serde_derive;
+#[macro_use]
 extern crate slog;
 extern crate slog_async;
 extern crate slog_term;
+extern crate toml;
 extern crate walkdir;
 
-
-use walkdir::{WalkDir, WalkDirIterator};
-use std::path::{Path, PathBuf};
-use std::{env, fs, io, process};
 use slog::Drain;
+use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::fs::{self, File};
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
+use std::{env, process};
+use walkdir::WalkDir;
 
 fn create_logger(verbosity: Option<u32>) -> slog::Logger {
     match verbosity {
@@ -59,19 +77,20 @@ fn create_logger(verbosity: Option<u32>) -> slog::Logger {
 
 fn should_traverse(de: &walkdir::DirEntry) -> bool {
     if !de.path().is_dir() {
-        return true
+        return true;
     }
 
-    if de.path().file_name().and_then(|s| s.to_str()) == Some(".git") {
-        return false
+    if de.path().file_name() == Some(OsStr::new(".git")) {
+        return false;
     }
 
-    return true
+    true
 }
 
 struct Dotr {
     force: bool,
     dry_run: bool,
+    ignore: HashSet<PathBuf>,
     log: slog::Logger,
 }
 
@@ -80,6 +99,7 @@ impl Dotr {
         Dotr {
             force: false,
             dry_run: false,
+            ignore: HashSet::new(),
             log: slog::Logger::root(slog::Discard, o!()),
         }
     }
@@ -91,6 +111,11 @@ impl Dotr {
 
     fn set_force(&mut self) -> &mut Self {
         self.force = true;
+        self
+    }
+
+    fn set_ignore(&mut self, ignore: HashSet<PathBuf>) -> &mut Self {
+        self.ignore = ignore;
         self
     }
 
@@ -131,10 +156,15 @@ impl Dotr {
 
             let src = src.path();
             let src_rel = src.strip_prefix(&src_base).unwrap();
+
+            if self.ignore.contains(src_rel) {
+                debug!(self.log, "Ignoring file"; "path" => src.display());
+                continue;
+            }
+
             let dst = dst_base.join(src_rel);
             let dst_metadata = dst.symlink_metadata().ok();
             let dst_type = dst_metadata.map(|m| m.file_type());
-
 
             let src_metadata = src.symlink_metadata()?;
             let src_type = src_metadata.file_type();
@@ -170,11 +200,9 @@ impl Dotr {
                         }
                         continue;
                     }
-                } else {
-                    if !self.dry_run {
-                        trace!(log, "Creating a base directory (if doesn't exist)");
-                        fs::create_dir_all(dst.parent().unwrap())?;
-                    }
+                } else if !self.dry_run {
+                    trace!(log, "Creating a base directory (if doesn't exist)");
+                    fs::create_dir_all(dst.parent().unwrap())?;
                 }
 
                 if !self.dry_run {
@@ -193,17 +221,18 @@ impl Dotr {
                             debug!(log, "Force removing destination (dry-run)");
                         }
                     } else if Some(src_link.clone()) == dst.read_link().ok() {
-                        debug!(log, "Destination already points to the source (symlink source)");
+                        debug!(
+                            log,
+                            "Destination already points to the source (symlink source)"
+                        );
                         continue;
                     } else {
                         warn!(log, "Destination already exists");
                         continue;
                     }
-                } else {
-                    if !self.dry_run {
-                        trace!(log, "Creating a base directory (if doesn't exist)");
-                        fs::create_dir_all(dst.parent().unwrap())?;
-                    }
+                } else if !self.dry_run {
+                    trace!(log, "Creating a base directory (if doesn't exist)");
+                    fs::create_dir_all(dst.parent().unwrap())?;
                 }
                 if !self.dry_run {
                     trace!(log, "Duplicating symlink"; "src-link" => src_link.display());
@@ -234,6 +263,12 @@ impl Dotr {
 
             let src = src.path();
             let src_rel = src.strip_prefix(&src_base).unwrap();
+
+            if self.ignore.contains(src_rel) {
+                debug!(self.log, "Ignoring file"; "path" => src.display());
+                continue;
+            }
+
             let dst = dst_base.join(src_rel);
 
             let src_metadata = src.symlink_metadata()?;
@@ -258,29 +293,25 @@ impl Dotr {
                         } else {
                             debug!(log, "Force removing (dry run)");
                         }
-                    } else {
-                        if dst_metadata.file_type().is_file() {
-                            warn!(log, "Destination already exists and is a file");
-                            continue;
-                        } else if dst_metadata.file_type().is_dir() {
-                            warn!(log, "Destination already exists and is a directory");
-                            continue;
-                        } else if dst_metadata.file_type().is_symlink() {
-                            let dst_link = dst.read_link()?;
-                            if dst_link != src {
-                                warn!(
+                    } else if dst_metadata.file_type().is_file() {
+                        warn!(log, "Destination already exists and is a file");
+                        continue;
+                    } else if dst_metadata.file_type().is_dir() {
+                        warn!(log, "Destination already exists and is a directory");
+                        continue;
+                    } else if dst_metadata.file_type().is_symlink() {
+                        let dst_link = dst.read_link()?;
+                        if dst_link != src {
+                            warn!(
                                     log,
                                     "Destination already exists and is a symlink pointing to something else"
                                 );
-                                continue;
-                            } else {
-                                if !self.dry_run {
-                                    fs::remove_file(&dst)?;
-                                }
-                            }
-                        } else {
-                            warn!(log, "Destination exists and is of unknown file type");
+                            continue;
+                        } else if !self.dry_run {
+                            fs::remove_file(&dst)?;
                         }
+                    } else {
+                        warn!(log, "Destination exists and is of unknown file type");
                     }
                 } else {
                     debug!(log, "Destination doesn't exist - nothing to unlink");
@@ -298,30 +329,26 @@ impl Dotr {
                             fs::remove_file(&dst)?;
                             continue;
                         }
-                    } else {
-                        if dst_metadata.file_type().is_file() {
-                            warn!(log, "Destination already exists and is a file");
-                            continue;
-                        } else if dst_metadata.file_type().is_dir() {
-                            warn!(log, "Destination already exists and is a directory");
-                            continue;
-                        } else if dst_metadata.file_type().is_symlink() {
-                            let dst_link = dst.read_link()?;
-                            if dst_link != src_link {
-                                warn!(log,
+                    } else if dst_metadata.file_type().is_file() {
+                        warn!(log, "Destination already exists and is a file");
+                        continue;
+                    } else if dst_metadata.file_type().is_dir() {
+                        warn!(log, "Destination already exists and is a directory");
+                        continue;
+                    } else if dst_metadata.file_type().is_symlink() {
+                        let dst_link = dst.read_link()?;
+                        if dst_link != src_link {
+                            warn!(log,
                                       "Destination already exists and is a symlink pointing to something else";
                                       "dst-link" => dst_link.display(),
                                       "src-link" => src_link.display(),
                                       );
-                                continue;
-                            } else {
-                                if !self.dry_run {
-                                    fs::remove_file(&dst)?;
-                                }
-                            }
-                        } else {
-                            warn!(log, "Destination exists and is of unknown file type");
+                            continue;
+                        } else if !self.dry_run {
+                            fs::remove_file(&dst)?;
                         }
+                    } else {
+                        warn!(log, "Destination exists and is of unknown file type");
                     }
                 } else {
                     debug!(log, "Destination doesn't exist - nothing to unlink");
@@ -349,6 +376,12 @@ struct Options {
     log: slog::Logger,
     dry_run: bool,
     force: bool,
+    ignore: HashSet<PathBuf>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize)]
+struct SourceOptions {
+    ignore: Option<HashSet<PathBuf>>,
 }
 
 impl Options {
@@ -378,7 +411,6 @@ impl Options {
             )
             ).setting(clap::AppSettings::SubcommandRequiredElseHelp)
             .get_matches();
-
 
         if let Some(dir) = matches.value_of_os("DST_DIR") {
             dst_dir = Some(dir.into());
@@ -410,21 +442,38 @@ impl Options {
 
         let dst_dir = if let Some(dir) = dst_dir {
             dir
+        } else if let Some(home) = env::var_os("HOME") {
+            Path::new(&home).into()
         } else {
-            if let Some(home) = env::var_os("HOME") {
-                Path::new(&home).into()
-            } else {
-                return Err(io::Error::new(io::ErrorKind::NotFound, "$HOME not set"));
-            }
+            return Err(io::Error::new(io::ErrorKind::NotFound, "$HOME not set"));
         };
 
+        let config_file_name = PathBuf::from("dotr.toml");
+        let config_file = src_dir.join(&config_file_name);
+        let mut ignore = HashSet::new();
+        if config_file.exists() {
+            let mut file = File::open(&config_file)?;
+            let mut string = String::new();
+            file.read_to_string(&mut string)?;
+            ignore.insert(config_file_name);
+            match toml::from_str::<SourceOptions>(&string) {
+                Ok(options) => {
+                    ignore.extend(options.ignore.into_iter().flat_map(|x| x));
+                }
+                Err(e) => {
+                    error!(log, "Unable to parse config file"; "path" => config_file.display(), "error" => %e);
+                }
+            }
+        }
+
         Ok(Options {
-            dst_dir: dst_dir,
-            src_dir: src_dir,
+            dst_dir,
+            src_dir,
             command: command.unwrap(),
-            dry_run: dry_run,
-            force: force,
-            log: log,
+            dry_run,
+            force,
+            ignore,
+            log,
         })
     }
 }
@@ -443,6 +492,8 @@ fn run() -> io::Result<()> {
     if options.force {
         dotr.set_force();
     }
+
+    dotr.set_ignore(options.ignore);
 
     match options.command {
         Command::Link => dotr.link(&options.src_dir, &options.dst_dir)?,

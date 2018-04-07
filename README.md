@@ -17,7 +17,7 @@
 
 See [wiki](https://github.com/dpc/dotr/wiki) for current project status.
 
-`dotr` is the simplest dotfile manager
+`dotr` is a very simple dotfile manager
 
 It supports `link` and `unlink` operations and couple
 of basic flags like `force`.
@@ -37,8 +37,20 @@ cargo install dotr
 #### Usage:
 
 ```norust
-dotr --help
+dotr help
 ```
+
+#### Ignoring files:
+
+`dotr` can skip some of the files in the source directory. To configure that,
+create a file called `dotr.toml` with an `ignore` key set to an array of
+files to be excluded:
+
+```toml
+ignore = ["LICENSE", "user.js"]
+```
+
+The `dotr.toml` file will be loaded, if present, from the source directory.
 
 #### TODO:
 
