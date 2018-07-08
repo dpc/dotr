@@ -1,3 +1,5 @@
+cargo-features = ["edition"]
+
 [package]
 authors = ["Dawid Ciężarkiewicz <dpc@dpc.pw>"]
 description = "Very simple dotfile manager"
@@ -9,6 +11,8 @@ name = "dotr"
 readme = "README.md"
 repository = "https://github.com/dpc/dotr"
 version = "0.4.0"
+edition = '2018'
+
 [[bin]]
 name = "dotr"
 path = "src/bin.rs"
@@ -26,3 +30,4 @@ walkdir = "2"
 [dependencies.slog]
 features = ["max_level_trace", "release_max_level_trace"]
 version = "2"
+
