@@ -41,14 +41,18 @@
 
 use clap::clap_app;
 use serde_derive::Deserialize;
+use slog::b;
 use slog::Drain;
-use slog::{b, debug, error, info, kv, log, o, record, record_static, trace, warn};
-use std::collections::HashSet;
-use std::ffi::OsStr;
-use std::fs::{self, File};
-use std::io::{self, Read};
-use std::path::{Path, PathBuf};
-use std::{env, process};
+use slog::{debug, error, info, kv, log, o, record, record_static, trace, warn};
+use std::{
+    collections::HashSet,
+    env,
+    ffi::OsStr,
+    fs::{self, File},
+    io::{self, Read},
+    path::{Path, PathBuf},
+    process,
+};
 use walkdir::WalkDir;
 
 fn create_logger(verbosity: Option<u32>) -> slog::Logger {
@@ -120,7 +124,7 @@ impl Dotr {
 
     fn link_entry(
         &self,
-        src: walkdir::DirEntry,
+        src: &walkdir::DirEntry,
         src_base: &Path,
         dst_base: &Path,
     ) -> io::Result<()> {
@@ -244,7 +248,7 @@ impl Dotr {
             .filter_entry(should_traverse)
             .filter_map(|e| e.ok())
         {
-            self.link_entry(src, &src_base, &dst_base)?;
+            self.link_entry(&src, &src_base, &dst_base)?;
         }
 
         Ok(())
@@ -264,7 +268,7 @@ impl Dotr {
             .filter_entry(should_traverse)
             .filter_map(|e| e.ok())
         {
-            self.unlink_entry(src, &src_base, &dst_base)?;
+            self.unlink_entry(&src, &src_base, &dst_base)?;
         }
 
         Ok(())
@@ -272,7 +276,7 @@ impl Dotr {
 
     fn unlink_entry(
         &self,
-        src: walkdir::DirEntry,
+        src: &walkdir::DirEntry,
         src_base: &Path,
         dst_base: &Path,
     ) -> io::Result<()> {
