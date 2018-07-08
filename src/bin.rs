@@ -39,10 +39,10 @@
 
 #![feature(rust_2018_preview, use_extern_macros)]
 
-use serde_derive::Deserialize;
 use clap::clap_app;
-use slog::{o, kv, trace, debug, log, record, record_static, b, warn, info, error};
+use serde_derive::Deserialize;
 use slog::Drain;
+use slog::{b, debug, error, info, kv, log, o, record, record_static, trace, warn};
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fs::{self, File};
@@ -377,6 +377,7 @@ impl Dotr {
         Ok(())
     }
 }
+
 #[derive(Copy, Clone)]
 enum Command {
     Link,
@@ -493,16 +494,88 @@ impl Options {
     }
 }
 
-/*
-#[test]
-fn simple() {
-    let tmp = Directory::new("src").unwrap();
-    let src = Directory::new("dst").unwrap();
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::{fs, io};
 
-    create_file(src.join("a"));
+    fn create_file(path: &Path) -> io::Result<()> {
+        std::fs::File::create(path)?;
+        Ok(())
+    }
 
+    fn assert_is_link(path: &Path, links_to: &Path) {
+        let dst_path = fs::read_link(&path).unwrap();
+
+        assert_eq!(dst_path, links_to);
+    }
+
+    #[test]
+    fn simple_file() -> io::Result<()> {
+        let dotr = super::Dotr::new();
+
+        let src = temporary::Directory::new("src").unwrap();
+        let dst = temporary::Directory::new("dst").unwrap();
+
+        let src_path = src.join("a");
+        let dst_path = dst.join("a");
+        create_file(&src_path)?;
+
+        dotr.link(&src, &dst)?;
+        assert_is_link(&dst_path, &src_path);
+
+        dotr.unlink(&src, &dst)?;
+        assert!(!dst_path.exists());
+
+        Ok(())
+    }
+
+    #[test]
+    fn simple_nested_file() -> io::Result<()> {
+        let dotr = super::Dotr::new();
+
+        let src = temporary::Directory::new("src").unwrap();
+        let dst = temporary::Directory::new("dst").unwrap();
+
+        let src_path = src.join("foo").join("a");
+        let dst_path = dst.join("foo").join("a");
+        fs::create_dir_all(src.join("foo"))?;
+        create_file(&src_path)?;
+
+        dotr.link(&src, &dst)?;
+        assert_is_link(&dst_path, &src_path);
+
+        dotr.unlink(&src, &dst)?;
+        assert!(!dst_path.exists());
+
+        Ok(())
+    }
+
+    #[test]
+    fn simple_symlink() -> io::Result<()> {
+        let dotr = super::Dotr::new();
+
+        let src = temporary::Directory::new("src").unwrap();
+        let dst = temporary::Directory::new("dst").unwrap();
+
+        let src_path = src.join("a");
+        let src_link_path = src.join("a.lnk");
+        let dst_path = dst.join("a");
+        let dst_link_path = dst.join("a.lnk");
+        create_file(&src_path)?;
+
+        std::os::unix::fs::symlink(&src_path, &src_link_path)?;
+
+        dotr.link(&src, &dst)?;
+        assert_is_link(&dst_link_path, &src_path);
+
+        dotr.unlink(&src, &dst)?;
+        assert!(!dst_path.exists());
+        assert!(!dst_link_path.exists());
+
+        Ok(())
+    }
 }
-*/
 
 fn run() -> io::Result<()> {
     let options = Options::from_clap()?;
