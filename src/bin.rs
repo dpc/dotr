@@ -37,19 +37,11 @@
 //!
 //! * Make it a separate library + binary
 
-#![feature(rust_2018_preview)]
+#![feature(rust_2018_preview, use_extern_macros)]
 
-#[macro_use]
-extern crate clap;
-#[macro_use]
-extern crate serde_derive;
-#[macro_use]
-extern crate slog;
-extern crate slog_async;
-extern crate slog_term;
-extern crate toml;
-extern crate walkdir;
-
+use serde_derive::Deserialize;
+use clap::clap_app;
+use slog::{o, kv, trace, debug, log, record, record_static, b, warn, info, error};
 use slog::Drain;
 use std::collections::HashSet;
 use std::ffi::OsStr;
