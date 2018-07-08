@@ -1,15 +1,14 @@
 [package]
 authors = ["Dawid Ciężarkiewicz <dpc@dpc.pw>"]
-name = "dotr"
-version = "0.4.0"
 description = "Very simple dotfile manager"
-keywords = ["rc", "dot", "dotfile"]
-license = "MPL-2.0"
 documentation = "https://docs.rs/dotr/"
 homepage = "https://github.com/dpc/dotr"
-repository = "https://github.com/dpc/dotr"
+keywords = ["rc", "dot", "dotfile"]
+license = "MPL-2.0"
+name = "dotr"
 readme = "README.md"
-
+repository = "https://github.com/dpc/dotr"
+version = "0.4.0"
 [[bin]]
 name = "dotr"
 path = "src/bin.rs"
@@ -18,8 +17,12 @@ path = "src/bin.rs"
 clap = "2"
 serde = "1"
 serde_derive = "1"
-slog = { version = "2", features = ["max_level_trace", "release_max_level_trace"]}
-slog-term = "2"
 slog-async = "2"
+slog-term = "2"
+temporary = "*"
 toml = "0.4"
 walkdir = "2"
+
+[dependencies.slog]
+features = ["max_level_trace", "release_max_level_trace"]
+version = "2"

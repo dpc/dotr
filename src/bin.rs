@@ -37,6 +37,8 @@
 //!
 //! * Make it a separate library + binary
 
+#![feature(rust_2018_preview)]
+
 #[macro_use]
 extern crate clap;
 #[macro_use]
@@ -498,6 +500,17 @@ impl Options {
         })
     }
 }
+
+/*
+#[test]
+fn simple() {
+    let tmp = Directory::new("src").unwrap();
+    let src = Directory::new("dst").unwrap();
+
+    create_file(src.join("a"));
+
+}
+*/
 
 fn run() -> io::Result<()> {
     let options = Options::from_clap()?;
