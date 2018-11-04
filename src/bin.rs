@@ -37,13 +37,9 @@
 //!
 //! * Make it a separate library + binary
 
-#![feature(rust_2018_preview, use_extern_macros)]
-
 use clap::clap_app;
 use serde_derive::Deserialize;
-use slog::b;
-use slog::Drain;
-use slog::{debug, error, info, kv, log, o, record, record_static, trace, warn};
+use slog::{b, debug, error, info, kv, log, o, record, record_static, trace, warn, Drain};
 use std::{
     collections::HashSet,
     env,
@@ -429,8 +425,9 @@ impl Options {
             (@subcommand unlink =>
              (about: "Remove links created by `link`")
             )
-            ).setting(clap::AppSettings::SubcommandRequiredElseHelp)
-            .get_matches();
+            )
+        .setting(clap::AppSettings::SubcommandRequiredElseHelp)
+        .get_matches();
 
         if let Some(dir) = matches.value_of_os("DST_DIR") {
             dst_dir = Some(dir.into());
@@ -500,8 +497,7 @@ impl Options {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-    use std::{fs, io};
+    use std::{fs, io, path::Path};
 
     fn create_file(path: &Path) -> io::Result<()> {
         std::fs::File::create(path)?;
