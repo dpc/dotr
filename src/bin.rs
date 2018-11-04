@@ -499,6 +499,8 @@ impl Options {
 mod tests {
     use std::{fs, io, path::Path};
 
+    use tempdir::TempDir;
+
     fn create_file(path: &Path) -> io::Result<()> {
         std::fs::File::create(path)?;
         Ok(())
@@ -514,8 +516,10 @@ mod tests {
     fn simple_file() -> io::Result<()> {
         let dotr = super::Dotr::new();
 
-        let src = temporary::Directory::new("src").unwrap();
-        let dst = temporary::Directory::new("dst").unwrap();
+        let src = TempDir::new("src").unwrap();
+        let dst = TempDir::new("dst").unwrap();
+        let src = src.path();
+        let dst = dst.path();
 
         let src_path = src.join("a");
         let dst_path = dst.join("a");
@@ -534,8 +538,10 @@ mod tests {
     fn simple_nested_file() -> io::Result<()> {
         let dotr = super::Dotr::new();
 
-        let src = temporary::Directory::new("src").unwrap();
-        let dst = temporary::Directory::new("dst").unwrap();
+        let src = TempDir::new("src").unwrap();
+        let dst = TempDir::new("dst").unwrap();
+        let src = src.path();
+        let dst = dst.path();
 
         let src_path = src.join("foo").join("a");
         let dst_path = dst.join("foo").join("a");
@@ -555,8 +561,10 @@ mod tests {
     fn simple_symlink() -> io::Result<()> {
         let dotr = super::Dotr::new();
 
-        let src = temporary::Directory::new("src").unwrap();
-        let dst = temporary::Directory::new("dst").unwrap();
+        let src = TempDir::new("src").unwrap();
+        let dst = TempDir::new("dst").unwrap();
+        let src = src.path();
+        let dst = dst.path();
 
         let src_path = src.join("a");
         let src_link_path = src.join("a.lnk");

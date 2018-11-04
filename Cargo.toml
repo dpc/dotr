@@ -23,7 +23,7 @@ serde = "1"
 serde_derive = "1"
 slog-async = "2"
 slog-term = "2"
-temporary = "*"
+tempdir = "*"
 toml = "0.4"
 walkdir = "2"
 
