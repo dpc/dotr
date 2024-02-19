@@ -23,9 +23,9 @@
 //!
 //! ### Ignoring files:
 //!
-//! `dotr` can skip some of the files in the source directory. To configure that,
-//! create a file called `dotr.toml` with an `ignore` key set to an array of
-//! files to be excluded:
+//! `dotr` can skip some of the files in the source directory. To configure
+//! that, create a file called `dotr.toml` with an `ignore` key set to an array
+//! of files to be excluded:
 //!
 //! ```toml
 //! ignore = ["LICENSE", "user.js"]
@@ -37,18 +37,16 @@
 //!
 //! * Make it a separate library + binary
 
+use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::fs::{self, File};
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
+use std::{env, process};
+
 use clap::clap_app;
 use serde_derive::Deserialize;
 use slog::{b, debug, error, info, kv, log, o, record, record_static, trace, warn, Drain};
-use std::{
-    collections::HashSet,
-    env,
-    ffi::OsStr,
-    fs::{self, File},
-    io::{self, Read},
-    path::{Path, PathBuf},
-    process,
-};
 use walkdir::WalkDir;
 
 fn create_logger(verbosity: Option<u32>) -> slog::Logger {
@@ -356,10 +354,10 @@ impl Dotr {
                     let dst_link = dst.read_link()?;
                     if dst_link != src_link {
                         warn!(log,
-                                      "Destination already exists and is a symlink pointing to something else";
-                                      "dst-link" => dst_link.display(),
-                                      "src-link" => src_link.display(),
-                                      );
+                        "Destination already exists and is a symlink pointing to something else";
+                        "dst-link" => dst_link.display(),
+                        "src-link" => src_link.display(),
+                        );
                         return Ok(());
                     } else if !self.dry_run {
                         fs::remove_file(&dst)?;
@@ -410,22 +408,22 @@ impl Options {
         //let mut command : Option<Command> = None;
 
         let matches = clap_app!(
-            dotr =>
-            (version: env!("CARGO_PKG_VERSION"))
-            (author: "Dawid Ciężarkiewicz <dpc@dpc.pw>")
-            (about: "Simple dotfile manager")
-            (@arg DST_DIR: -d --dst +takes_value "Path to destination. Default: $HOME")
-            (@arg SRC_DIR: -s --src +takes_value "Path to source. Default: .")
-            (@arg VERBOSE: -v ... "Increase debugging level")
-            (@arg DRY_RUN: --dry... "Dry run")
-            (@arg FORCE: --force ... "Force overwrite/delete")
-            (@subcommand link =>
-             (about: "Link to files from SRC_DIR in DST_DIR")
-            )
-            (@subcommand unlink =>
-             (about: "Remove links created by `link`")
-            )
-            )
+        dotr =>
+        (version: env!("CARGO_PKG_VERSION"))
+        (author: "Dawid Ciężarkiewicz <dpc@dpc.pw>")
+        (about: "Simple dotfile manager")
+        (@arg DST_DIR: -d --dst +takes_value "Path to destination. Default: $HOME")
+        (@arg SRC_DIR: -s --src +takes_value "Path to source. Default: .")
+        (@arg VERBOSE: -v ... "Increase debugging level")
+        (@arg DRY_RUN: --dry... "Dry run")
+        (@arg FORCE: --force ... "Force overwrite/delete")
+        (@subcommand link =>
+         (about: "Link to files from SRC_DIR in DST_DIR")
+        )
+        (@subcommand unlink =>
+         (about: "Remove links created by `link`")
+        )
+        )
         .setting(clap::AppSettings::SubcommandRequiredElseHelp)
         .get_matches();
 
@@ -497,7 +495,8 @@ impl Options {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, io, path::Path};
+    use std::path::Path;
+    use std::{fs, io};
 
     use tempdir::TempDir;
 
