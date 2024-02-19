@@ -16,18 +16,16 @@ name = "dotr"
 path = "src/bin.rs"
 
 [dependencies]
-clap = "2"
-serde = "1"
+clap = { version = "4", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
 serde_derive = "1"
-slog-async = "2"
-slog-term = "2"
 tempdir = "*"
 toml = "0.4"
 walkdir = "2"
-
-[dependencies.slog]
-features = ["max_level_trace", "release_max_level_trace"]
-version = "2"
+tracing = "*"
+clap-verbosity-flag = "2.2.0"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
+anyhow = "1.0.80"
 
 [profile]
 
