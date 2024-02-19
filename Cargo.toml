@@ -31,3 +31,11 @@ walkdir = "2"
 features = ["max_level_trace", "release_max_level_trace"]
 version = "2"
 
+[profile]
+
+[profile.ci]
+inherits = "dev"
+incremental = false
+debug = "line-tables-only"
+lto = "off"
+

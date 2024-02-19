@@ -2,39 +2,54 @@
   description = "A very basic flake";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
-
-    fenix = {
-      url = "github:nix-community/fenix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    naersk = {
-      url = "github:nmattia/naersk";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    flakebox.url = "github:rustshop/flakebox";
   };
 
-  outputs = { self, fenix, naersk, nixpkgs, flake-utils }:
+  outputs = { self, flakebox, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
-    let pkgs = nixpkgs.legacyPackages.${system};
-    in {
-      packages.dotr = (pkgs.makeRustPlatform {
-        inherit (fenix.packages.${system}.minimal) cargo rustc;
-      }).buildRustPackage {
-        pname = "dotr";
-        version = "0.4.0";
-        src = ./.;
-        cargoSha256 = "sha256-E0TXVz4ziIeuXGKfdJ0ROHcYZLWXWJxs+waMgxc5MVM=";
-      };
+      let
+        pkgs = flakebox.inputs.nixpkgs.legacyPackages.${system};
 
-      defaultPackage = self.packages.${system}.dotr;
-      defaultApp = self.packages.${system}.dotr;
+        lib = pkgs.lib;
+        fs = lib.fileset;
 
-      devShell =
-        pkgs.mkShell {
-          nativeBuildInputs = [ fenix.packages.${system}.minimal.rustc ];
-          buildInputs = [];
+        projectName = "dotr";
+
+        flakeboxLib = flakebox.lib.${system} {
+          config = {
+            github.ci.buildOutputs = [ ".#ci.${projectName}" ];
+          };
         };
-  });
+
+        srcFileset = fs.unions [
+          ./Cargo.toml
+          ./Cargo.lock
+          ./src
+        ];
+
+
+        multiBuild =
+          (flakeboxLib.craneMultiBuild { }) (craneLib':
+            let
+              craneLib = (craneLib'.overrideArgs {
+                pname = projectName;
+                src = fs.toSource {
+                  root = ./.;
+                  fileset = srcFileset;
+                };
+              });
+            in
+            {
+              "${projectName}" = craneLib.buildPackage { };
+            });
+      in
+      {
+        packages = {
+          default = multiBuild.dotr;
+        };
+        legacyPackages = multiBuild;
+
+        devShells = flakeboxLib.mkShells { };
+      });
 }
