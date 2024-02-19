@@ -46,7 +46,7 @@ use std::{env, process};
 
 use clap::clap_app;
 use serde_derive::Deserialize;
-use slog::{b, debug, error, info, kv, log, o, record, record_static, trace, warn, Drain};
+use slog::{debug, error, info, o, trace, warn, Drain};
 use walkdir::WalkDir;
 
 fn create_logger(verbosity: Option<u32>) -> slog::Logger {
@@ -125,7 +125,7 @@ impl Dotr {
         trace!(self.log, "Walking path"; "path" => src.path().display());
 
         let src = src.path();
-        let src_rel = src.strip_prefix(&src_base).unwrap();
+        let src_rel = src.strip_prefix(src_base).unwrap();
 
         if self.ignore.contains(src_rel) {
             debug!(self.log, "Ignoring file"; "path" => src.display());
@@ -177,7 +177,7 @@ impl Dotr {
 
             if !self.dry_run {
                 trace!(log, "Creating symlink to a src file");
-                std::os::unix::fs::symlink(&src, &dst)?;
+                std::os::unix::fs::symlink(src, &dst)?;
             }
         } else if src_type.is_symlink() {
             let src_link = src.read_link()?;
@@ -277,7 +277,7 @@ impl Dotr {
         trace!(self.log, "Walking path"; "path" => src.path().display());
 
         let src = src.path();
-        let src_rel = src.strip_prefix(&src_base).unwrap();
+        let src_rel = src.strip_prefix(src_base).unwrap();
 
         if self.ignore.contains(src_rel) {
             debug!(self.log, "Ignoring file"; "path" => src.display());
@@ -473,7 +473,7 @@ impl Options {
             ignore.insert(config_file_name);
             match toml::from_str::<SourceOptions>(&string) {
                 Ok(options) => {
-                    ignore.extend(options.ignore.into_iter().flat_map(|x| x));
+                    ignore.extend(options.ignore.into_iter().flatten());
                 }
                 Err(e) => {
                     error!(log, "Unable to parse config file"; "path" => config_file.display(), "error" => %e);
@@ -490,97 +490,6 @@ impl Options {
             ignore,
             log,
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
-    use std::{fs, io};
-
-    use tempdir::TempDir;
-
-    fn create_file(path: &Path) -> io::Result<()> {
-        std::fs::File::create(path)?;
-        Ok(())
-    }
-
-    fn assert_is_link(path: &Path, links_to: &Path) {
-        let dst_path = fs::read_link(&path).unwrap();
-
-        assert_eq!(dst_path, links_to);
-    }
-
-    #[test]
-    fn simple_file() -> io::Result<()> {
-        let dotr = super::Dotr::new();
-
-        let src = TempDir::new("src").unwrap();
-        let dst = TempDir::new("dst").unwrap();
-        let src = src.path();
-        let dst = dst.path();
-
-        let src_path = src.join("a");
-        let dst_path = dst.join("a");
-        create_file(&src_path)?;
-
-        dotr.link(&src, &dst)?;
-        assert_is_link(&dst_path, &src_path);
-
-        dotr.unlink(&src, &dst)?;
-        assert!(!dst_path.exists());
-
-        Ok(())
-    }
-
-    #[test]
-    fn simple_nested_file() -> io::Result<()> {
-        let dotr = super::Dotr::new();
-
-        let src = TempDir::new("src").unwrap();
-        let dst = TempDir::new("dst").unwrap();
-        let src = src.path();
-        let dst = dst.path();
-
-        let src_path = src.join("foo").join("a");
-        let dst_path = dst.join("foo").join("a");
-        fs::create_dir_all(src.join("foo"))?;
-        create_file(&src_path)?;
-
-        dotr.link(&src, &dst)?;
-        assert_is_link(&dst_path, &src_path);
-
-        dotr.unlink(&src, &dst)?;
-        assert!(!dst_path.exists());
-
-        Ok(())
-    }
-
-    #[test]
-    fn simple_symlink() -> io::Result<()> {
-        let dotr = super::Dotr::new();
-
-        let src = TempDir::new("src").unwrap();
-        let dst = TempDir::new("dst").unwrap();
-        let src = src.path();
-        let dst = dst.path();
-
-        let src_path = src.join("a");
-        let src_link_path = src.join("a.lnk");
-        let dst_path = dst.join("a");
-        let dst_link_path = dst.join("a.lnk");
-        create_file(&src_path)?;
-
-        std::os::unix::fs::symlink(&src_path, &src_link_path)?;
-
-        dotr.link(&src, &dst)?;
-        assert_is_link(&dst_link_path, &src_path);
-
-        dotr.unlink(&src, &dst)?;
-        assert!(!dst_path.exists());
-        assert!(!dst_link_path.exists());
-
-        Ok(())
     }
 }
 
@@ -613,5 +522,96 @@ fn main() {
     if let Err(e) = run() {
         eprintln!("Error: {}", e);
         process::exit(-1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::{fs, io};
+
+    use tempdir::TempDir;
+
+    fn create_file(path: &Path) -> io::Result<()> {
+        std::fs::File::create(path)?;
+        Ok(())
+    }
+
+    fn assert_is_link(path: &Path, links_to: &Path) {
+        let dst_path = fs::read_link(path).unwrap();
+
+        assert_eq!(dst_path, links_to);
+    }
+
+    #[test]
+    fn simple_file() -> io::Result<()> {
+        let dotr = super::Dotr::new();
+
+        let src = TempDir::new("src").unwrap();
+        let dst = TempDir::new("dst").unwrap();
+        let src = src.path();
+        let dst = dst.path();
+
+        let src_path = src.join("a");
+        let dst_path = dst.join("a");
+        create_file(&src_path)?;
+
+        dotr.link(src, dst)?;
+        assert_is_link(&dst_path, &src_path);
+
+        dotr.unlink(src, dst)?;
+        assert!(!dst_path.exists());
+
+        Ok(())
+    }
+
+    #[test]
+    fn simple_nested_file() -> io::Result<()> {
+        let dotr = super::Dotr::new();
+
+        let src = TempDir::new("src").unwrap();
+        let dst = TempDir::new("dst").unwrap();
+        let src = src.path();
+        let dst = dst.path();
+
+        let src_path = src.join("foo").join("a");
+        let dst_path = dst.join("foo").join("a");
+        fs::create_dir_all(src.join("foo"))?;
+        create_file(&src_path)?;
+
+        dotr.link(src, dst)?;
+        assert_is_link(&dst_path, &src_path);
+
+        dotr.unlink(src, dst)?;
+        assert!(!dst_path.exists());
+
+        Ok(())
+    }
+
+    #[test]
+    fn simple_symlink() -> io::Result<()> {
+        let dotr = super::Dotr::new();
+
+        let src = TempDir::new("src").unwrap();
+        let dst = TempDir::new("dst").unwrap();
+        let src = src.path();
+        let dst = dst.path();
+
+        let src_path = src.join("a");
+        let src_link_path = src.join("a.lnk");
+        let dst_path = dst.join("a");
+        let dst_link_path = dst.join("a.lnk");
+        create_file(&src_path)?;
+
+        std::os::unix::fs::symlink(&src_path, src_link_path)?;
+
+        dotr.link(src, dst)?;
+        assert_is_link(&dst_link_path, &src_path);
+
+        dotr.unlink(src, dst)?;
+        assert!(!dst_path.exists());
+        assert!(!dst_link_path.exists());
+
+        Ok(())
     }
 }
