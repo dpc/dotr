@@ -4,6 +4,7 @@ use std::fs::{self};
 use std::io::{self};
 use std::path::{Path, PathBuf};
 
+use anyhow::bail;
 use tracing::{debug, info, trace, warn};
 use walkdir::WalkDir;
 
@@ -66,6 +67,12 @@ impl Dotr {
             trace!(src = %src.display(), dst=%dst.display(), "Source is a file");
             if dst.exists() || dst.symlink_metadata().is_ok() {
                 if self.force {
+                    if dst_type.is_some_and(|t| t.is_dir()) {
+                        io::Error::new(
+                            io::ErrorKind::Other,
+                            format!("Can't safely remove {} as it's a directory", dst.display()),
+                        );
+                    }
                     if !self.dry_run {
                         debug!(src = %src.display(), dst=%dst.display(), "Force removing destination");
                         fs::remove_file(&dst)?;
