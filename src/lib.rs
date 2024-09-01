@@ -4,7 +4,6 @@ use std::fs::{self};
 use std::io::{self};
 use std::path::{Path, PathBuf};
 
-use anyhow::bail;
 use tracing::{debug, info, trace, warn};
 use walkdir::WalkDir;
 
