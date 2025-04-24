@@ -1,3 +1,5 @@
+TEST
+
 <!-- README.md is auto-generated from README.tpl with `cargo readme` -->
 
 <p align="center">
