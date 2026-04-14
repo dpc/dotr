@@ -10,78 +10,419 @@ fn create_file(path: &Path) -> io::Result<()> {
 
 fn assert_is_link(path: &Path, links_to: &Path) {
     let dst_path = fs::read_link(path).unwrap();
-
     assert_eq!(dst_path, links_to);
 }
 
+fn setup() -> (TempDir, TempDir) {
+    (TempDir::new().unwrap(), TempDir::new().unwrap())
+}
+
+// ── link: basic operations ──────────────────────────────────────────
+
 #[test]
-fn simple_file() -> io::Result<()> {
+fn link_single_file() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
     let dotr = super::Dotr::new();
 
-    let src = TempDir::new().unwrap();
-    let dst = TempDir::new().unwrap();
-    let src = src.path();
-    let dst = dst.path();
-
-    let src_path = src.join("a");
-    let dst_path = dst.join("a");
-    create_file(&src_path)?;
-
+    create_file(&src.join("a"))?;
     dotr.link(src, dst)?;
-    assert_is_link(&dst_path, &src_path);
-
-    dotr.unlink(src, dst)?;
-    assert!(!dst_path.exists());
-
+    assert_is_link(&dst.join("a"), &src.join("a"));
     Ok(())
 }
 
 #[test]
-fn simple_nested_file() -> io::Result<()> {
+fn link_multiple_files() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
     let dotr = super::Dotr::new();
 
-    let src = TempDir::new().unwrap();
-    let dst = TempDir::new().unwrap();
-    let src = src.path();
-    let dst = dst.path();
+    create_file(&src.join("a"))?;
+    create_file(&src.join("b"))?;
+    create_file(&src.join("c"))?;
+    dotr.link(src, dst)?;
 
-    let src_path = src.join("foo").join("a");
-    let dst_path = dst.join("foo").join("a");
+    assert_is_link(&dst.join("a"), &src.join("a"));
+    assert_is_link(&dst.join("b"), &src.join("b"));
+    assert_is_link(&dst.join("c"), &src.join("c"));
+    Ok(())
+}
+
+#[test]
+fn link_nested_file() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
     fs::create_dir_all(src.join("foo"))?;
-    create_file(&src_path)?;
-
+    create_file(&src.join("foo").join("a"))?;
     dotr.link(src, dst)?;
-    assert_is_link(&dst_path, &src_path);
 
-    dotr.unlink(src, dst)?;
-    assert!(!dst_path.exists());
-
+    assert_is_link(&dst.join("foo").join("a"), &src.join("foo").join("a"));
     Ok(())
 }
 
 #[test]
-fn simple_symlink() -> io::Result<()> {
+fn link_creates_parent_dirs() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
     let dotr = super::Dotr::new();
 
-    let src = TempDir::new().unwrap();
-    let dst = TempDir::new().unwrap();
-    let src = src.path();
-    let dst = dst.path();
+    fs::create_dir_all(src.join("a").join("b").join("c"))?;
+    create_file(&src.join("a").join("b").join("c").join("f"))?;
+    dotr.link(src, dst)?;
 
-    let src_path = src.join("a");
-    let src_link_path = src.join("a.lnk");
-    let dst_path = dst.join("a");
-    let dst_link_path = dst.join("a.lnk");
-    create_file(&src_path)?;
+    assert!(dst.join("a").join("b").join("c").is_dir());
+    assert_is_link(
+        &dst.join("a").join("b").join("c").join("f"),
+        &src.join("a").join("b").join("c").join("f"),
+    );
+    Ok(())
+}
 
-    std::os::unix::fs::symlink(&src_path, src_link_path)?;
+#[test]
+fn link_symlink_duplicated() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    create_file(&src.join("target"))?;
+    std::os::unix::fs::symlink(src.join("target"), src.join("link"))?;
 
     dotr.link(src, dst)?;
-    assert_is_link(&dst_link_path, &src_path);
+
+    // the symlink in dst should have the same target as in src
+    assert_is_link(&dst.join("link"), &src.join("target"));
+    Ok(())
+}
+
+// ── link: idempotency ───────────────────────────────────────────────
+
+#[test]
+fn link_idempotent_file() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    create_file(&src.join("a"))?;
+    dotr.link(src, dst)?;
+    dotr.link(src, dst)?; // second call should succeed silently
+
+    assert_is_link(&dst.join("a"), &src.join("a"));
+    Ok(())
+}
+
+#[test]
+fn link_idempotent_symlink() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    create_file(&src.join("target"))?;
+    std::os::unix::fs::symlink(src.join("target"), src.join("link"))?;
+
+    dotr.link(src, dst)?;
+    dotr.link(src, dst)?;
+
+    assert_is_link(&dst.join("link"), &src.join("target"));
+    Ok(())
+}
+
+// ── link: conflict without force ────────────────────────────────────
+
+#[test]
+fn link_existing_regular_file_no_force() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    create_file(&src.join("a"))?;
+    create_file(&dst.join("a"))?; // pre-existing regular file
+
+    dotr.link(src, dst)?; // should warn but not error
+
+    // dst should still be a regular file, not a symlink
+    assert!(dst.join("a").symlink_metadata()?.file_type().is_file());
+    assert!(fs::read_link(dst.join("a")).is_err());
+    Ok(())
+}
+
+#[test]
+fn link_existing_symlink_elsewhere_no_force() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+    let other = TempDir::new().unwrap();
+
+    create_file(&src.join("a"))?;
+    create_file(&other.path().join("other"))?;
+    std::os::unix::fs::symlink(other.path().join("other"), dst.join("a"))?;
+
+    dotr.link(src, dst)?; // should warn, not overwrite
+
+    // still points to other
+    assert_is_link(&dst.join("a"), &other.path().join("other"));
+    Ok(())
+}
+
+// ── link: force ─────────────────────────────────────────────────────
+
+#[test]
+fn link_force_overwrites_file() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new().set_force();
+
+    create_file(&src.join("a"))?;
+    create_file(&dst.join("a"))?; // pre-existing
+
+    dotr.link(src, dst)?;
+    assert_is_link(&dst.join("a"), &src.join("a"));
+    Ok(())
+}
+
+#[test]
+fn link_force_overwrites_symlink() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new().set_force();
+
+    create_file(&src.join("a"))?;
+    create_file(&src.join("target"))?;
+    std::os::unix::fs::symlink(src.join("target"), src.join("link"))?;
+
+    // pre-existing wrong symlink in dst
+    create_file(&dst.join("wrong"))?;
+    std::os::unix::fs::symlink(dst.join("wrong"), dst.join("link"))?;
+
+    dotr.link(src, dst)?;
+    assert_is_link(&dst.join("link"), &src.join("target"));
+    Ok(())
+}
+
+// ── link: .git skip ─────────────────────────────────────────────────
+
+#[test]
+fn link_skips_git_dir() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    fs::create_dir_all(src.join(".git"))?;
+    create_file(&src.join(".git").join("config"))?;
+    create_file(&src.join("a"))?;
+
+    dotr.link(src, dst)?;
+
+    assert!(!dst.join(".git").exists());
+    assert_is_link(&dst.join("a"), &src.join("a"));
+    Ok(())
+}
+
+// ── link: dry run ───────────────────────────────────────────────────
+
+#[test]
+fn link_dry_run_no_changes() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new().set_dry_run();
+
+    create_file(&src.join("a"))?;
+    dotr.link(src, dst)?;
+
+    assert!(!dst.join("a").exists());
+    Ok(())
+}
+
+// ── link: error cases ───────────────────────────────────────────────
+
+#[test]
+fn link_dst_not_exist() {
+    let src = TempDir::new().unwrap();
+    let dotr = super::Dotr::new();
+
+    let result = dotr.link(src.path(), Path::new("/tmp/dotr_nonexistent_dir"));
+    assert!(result.is_err());
+}
+
+#[test]
+fn link_dst_not_dir() -> io::Result<()> {
+    let src = TempDir::new().unwrap();
+    let dst = TempDir::new().unwrap();
+    let dotr = super::Dotr::new();
+
+    let dst_file = dst.path().join("not_a_dir");
+    create_file(&dst_file)?;
+
+    let result = dotr.link(src.path(), &dst_file);
+    assert!(result.is_err());
+    Ok(())
+}
+
+// ── unlink: basic ───────────────────────────────────────────────────
+
+#[test]
+fn unlink_removes_linked_file() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    create_file(&src.join("a"))?;
+    dotr.link(src, dst)?;
+    assert!(dst.join("a").exists());
 
     dotr.unlink(src, dst)?;
-    assert!(!dst_path.exists());
-    assert!(!dst_link_path.exists());
+    assert!(!dst.join("a").exists());
+    Ok(())
+}
 
+#[test]
+fn unlink_removes_linked_symlink() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    create_file(&src.join("target"))?;
+    std::os::unix::fs::symlink(src.join("target"), src.join("link"))?;
+
+    dotr.link(src, dst)?;
+    assert!(dst.join("link").symlink_metadata().is_ok());
+
+    dotr.unlink(src, dst)?;
+    assert!(dst.join("link").symlink_metadata().is_err());
+    Ok(())
+}
+
+#[test]
+fn unlink_nested_file() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    fs::create_dir_all(src.join("d"))?;
+    create_file(&src.join("d").join("f"))?;
+
+    dotr.link(src, dst)?;
+    dotr.unlink(src, dst)?;
+    assert!(!dst.join("d").join("f").exists());
+    Ok(())
+}
+
+// ── unlink: no-op cases ─────────────────────────────────────────────
+
+#[test]
+fn unlink_nonexistent_dst_ok() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    create_file(&src.join("a"))?;
+
+    // never linked, so nothing to unlink
+    dotr.unlink(src, dst)?;
+    Ok(())
+}
+
+#[test]
+fn unlink_regular_file_no_force() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    create_file(&src.join("a"))?;
+    create_file(&dst.join("a"))?; // regular file, not a symlink
+
+    dotr.unlink(src, dst)?; // should warn but not remove
+
+    assert!(dst.join("a").exists());
+    Ok(())
+}
+
+#[test]
+fn unlink_symlink_wrong_target_no_force() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    create_file(&src.join("a"))?;
+    create_file(&dst.join("other"))?;
+    std::os::unix::fs::symlink(dst.join("other"), dst.join("a"))?;
+
+    dotr.unlink(src, dst)?; // should warn, not remove
+
+    assert!(dst.join("a").symlink_metadata().is_ok());
+    Ok(())
+}
+
+// ── unlink: force ───────────────────────────────────────────────────
+
+#[test]
+fn unlink_force_removes_regular_file() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new().set_force();
+
+    create_file(&src.join("a"))?;
+    create_file(&dst.join("a"))?;
+
+    dotr.unlink(src, dst)?;
+    assert!(!dst.join("a").exists());
+    Ok(())
+}
+
+#[test]
+fn unlink_force_removes_wrong_symlink() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new().set_force();
+
+    create_file(&src.join("a"))?;
+    create_file(&dst.join("other"))?;
+    std::os::unix::fs::symlink(dst.join("other"), dst.join("a"))?;
+
+    dotr.unlink(src, dst)?;
+    assert!(dst.join("a").symlink_metadata().is_err());
+    Ok(())
+}
+
+// ── unlink: dry run ─────────────────────────────────────────────────
+
+#[test]
+fn unlink_dry_run_no_changes() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr_link = super::Dotr::new();
+    let dotr_dry = super::Dotr::new().set_dry_run();
+
+    create_file(&src.join("a"))?;
+    dotr_link.link(src, dst)?;
+
+    dotr_dry.unlink(src, dst)?;
+    assert!(dst.join("a").exists()); // still there
+    Ok(())
+}
+
+// ── round-trip: link then unlink ────────────────────────────────────
+
+#[test]
+fn roundtrip_multiple_files() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    fs::create_dir_all(src.join("d"))?;
+    create_file(&src.join("a"))?;
+    create_file(&src.join("b"))?;
+    create_file(&src.join("d").join("c"))?;
+
+    dotr.link(src, dst)?;
+    assert_is_link(&dst.join("a"), &src.join("a"));
+    assert_is_link(&dst.join("b"), &src.join("b"));
+    assert_is_link(&dst.join("d").join("c"), &src.join("d").join("c"));
+
+    dotr.unlink(src, dst)?;
+    assert!(!dst.join("a").exists());
+    assert!(!dst.join("b").exists());
+    assert!(!dst.join("d").join("c").exists());
     Ok(())
 }
