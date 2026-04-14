@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::{fs, io};
 
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 fn create_file(path: &Path) -> io::Result<()> {
     std::fs::File::create(path)?;
@@ -18,8 +18,8 @@ fn assert_is_link(path: &Path, links_to: &Path) {
 fn simple_file() -> io::Result<()> {
     let dotr = super::Dotr::new();
 
-    let src = TempDir::new("src").unwrap();
-    let dst = TempDir::new("dst").unwrap();
+    let src = TempDir::new().unwrap();
+    let dst = TempDir::new().unwrap();
     let src = src.path();
     let dst = dst.path();
 
@@ -40,8 +40,8 @@ fn simple_file() -> io::Result<()> {
 fn simple_nested_file() -> io::Result<()> {
     let dotr = super::Dotr::new();
 
-    let src = TempDir::new("src").unwrap();
-    let dst = TempDir::new("dst").unwrap();
+    let src = TempDir::new().unwrap();
+    let dst = TempDir::new().unwrap();
     let src = src.path();
     let dst = dst.path();
 
@@ -63,8 +63,8 @@ fn simple_nested_file() -> io::Result<()> {
 fn simple_symlink() -> io::Result<()> {
     let dotr = super::Dotr::new();
 
-    let src = TempDir::new("src").unwrap();
-    let dst = TempDir::new("dst").unwrap();
+    let src = TempDir::new().unwrap();
+    let dst = TempDir::new().unwrap();
     let src = src.path();
     let dst = dst.path();
 
