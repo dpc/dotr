@@ -40,22 +40,6 @@ cargo install dotr
 dotr help
 ```
 
-#### Ignoring files:
-
-`dotr` can skip some of the files in the source directory. To configure that,
-create a file called `dotr.toml` with an `ignore` key set to an array of
-files to be excluded:
-
-```toml
-ignore = ["LICENSE", "user.js"]
-```
-
-The `dotr.toml` file will be loaded, if present, from the source directory.
-
-#### TODO:
-
-* Make it a separate library + binary
-
 # License
 
 dotr is licensed under: MPL-2.0

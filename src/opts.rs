@@ -24,10 +24,6 @@ pub struct Options {
     #[arg(long)]
     pub force: bool,
 
-    /// Paths to ignore
-    #[arg(long)]
-    pub ignore: Vec<PathBuf>,
-
     #[clap(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 }

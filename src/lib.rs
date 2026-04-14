@@ -1,15 +1,12 @@
-use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fs::{self};
 use std::io::{self};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use tracing::{debug, info, trace, warn};
 use walkdir::WalkDir;
 
 pub struct Dotr {
-    ignore: HashSet<PathBuf>,
-
     dry_run: bool,
     force: bool,
 }
@@ -17,7 +14,6 @@ pub struct Dotr {
 impl Dotr {
     pub fn new() -> Self {
         Dotr {
-            ignore: HashSet::new(),
             dry_run: false,
             force: false,
         }
@@ -48,10 +44,6 @@ impl Dotr {
         let src = src.path();
         let src_rel = src.strip_prefix(src_base).unwrap();
 
-        if self.ignore.contains(src_rel) {
-            debug!(path = %src.display(), "Ignoring file");
-            return Ok(());
-        }
 
         let dst = dst_base.join(src_rel);
         let dst_metadata = dst.symlink_metadata().ok();
@@ -201,10 +193,6 @@ impl Dotr {
         let src = src.path();
         let src_rel = src.strip_prefix(src_base).unwrap();
 
-        if self.ignore.contains(src_rel) {
-            debug!(path = %src.display(), "Ignoring file");
-            return Ok(());
-        }
 
         let dst = dst_base.join(src_rel);
 
