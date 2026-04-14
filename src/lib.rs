@@ -44,7 +44,6 @@ impl Dotr {
         let src = src.path();
         let src_rel = src.strip_prefix(src_base).unwrap();
 
-
         let dst = dst_base.join(src_rel);
         let dst_metadata = dst.symlink_metadata().ok();
         let dst_type = dst_metadata.map(|m| m.file_type());
@@ -59,8 +58,7 @@ impl Dotr {
             if dst.exists() || dst.symlink_metadata().is_ok() {
                 if self.force {
                     if dst_type.is_some_and(|t| t.is_dir()) {
-                        io::Error::new(
-                            io::ErrorKind::Other,
+                        io::Error::other(
                             format!("Can't safely remove {} as it's a directory", dst.display()),
                         );
                     }
@@ -192,7 +190,6 @@ impl Dotr {
 
         let src = src.path();
         let src_rel = src.strip_prefix(src_base).unwrap();
-
 
         let dst = dst_base.join(src_rel);
 

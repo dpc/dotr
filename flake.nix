@@ -1,55 +1,85 @@
 {
-  description = "A very basic flake";
+  description = "Very simple dotfile manager";
 
   inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     flake-utils.url = "github:numtide/flake-utils";
     flakebox.url = "github:rustshop/flakebox";
   };
 
-  outputs = { self, flakebox, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      flakebox,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
-        pkgs = flakebox.inputs.nixpkgs.legacyPackages.${system};
-
-        lib = pkgs.lib;
-        fs = lib.fileset;
+        pkgs = nixpkgs.legacyPackages.${system};
 
         projectName = "dotr";
 
-        flakeboxLib = flakebox.lib.${system} {
+        flakeboxLib = flakebox.lib.mkLib pkgs {
           config = {
             github.ci.buildOutputs = [ ".#ci.${projectName}" ];
+            just.importPaths = [ "justfile.custom.just" ];
+            just.rules.watch.enable = false;
           };
         };
 
-        srcFileset = fs.unions [
-          ./Cargo.toml
-          ./Cargo.lock
-          ./src
+        buildPaths = [
+          "Cargo.toml"
+          "Cargo.lock"
+          "src"
         ];
 
+        buildSrc = flakeboxLib.filterSubPaths {
+          root = builtins.path {
+            name = projectName;
+            path = ./.;
+          };
+          paths = buildPaths;
+        };
 
-        multiBuild =
-          (flakeboxLib.craneMultiBuild { }) (craneLib':
-            let
-              craneLib = (craneLib'.overrideArgs {
-                pname = projectName;
-                src = fs.toSource {
-                  root = ./.;
-                  fileset = srcFileset;
-                };
-              });
-            in
-            {
-              "${projectName}" = craneLib.buildPackage { };
-            });
+        multiBuild = (flakeboxLib.craneMultiBuild { }) (
+          craneLib':
+          let
+            craneLib = craneLib'.overrideArgs {
+              pname = projectName;
+              src = buildSrc;
+              nativeBuildInputs = [ ];
+            };
+          in
+          rec {
+            workspaceDeps = craneLib.buildWorkspaceDepsOnly { };
+
+            workspace = craneLib.buildWorkspace {
+              cargoArtifacts = workspaceDeps;
+            };
+
+            tests = craneLib.cargoNextest {
+              cargoArtifacts = workspace;
+            };
+
+            clippy = craneLib.cargoClippy {
+              cargoArtifacts = workspaceDeps;
+            };
+
+            ${projectName} = craneLib.buildPackage {
+              cargoArtifacts = workspaceDeps;
+            };
+          }
+        );
       in
       {
-        packages = {
-          default = multiBuild.dotr;
-        };
+        packages.default = multiBuild.${projectName};
         legacyPackages = multiBuild;
 
-        devShells = flakeboxLib.mkShells { };
-      });
+        devShells = flakeboxLib.mkShells {
+          packages = [ ];
+        };
+      }
+    );
 }
