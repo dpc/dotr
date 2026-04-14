@@ -426,3 +426,154 @@ fn roundtrip_multiple_files() -> io::Result<()> {
     assert!(!dst.join("d").join("c").exists());
     Ok(())
 }
+
+// ── .dotr config: traverse = "link" ────────────────────────────────
+
+fn write_dotr_config(dir: &Path, content: &str) -> io::Result<()> {
+    fs::write(dir.join(".dotr"), content)
+}
+
+#[test]
+fn dotr_traverse_link_symlinks_directory() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    fs::create_dir_all(src.join("subdir"))?;
+    create_file(&src.join("subdir").join("file"))?;
+    write_dotr_config(&src.join("subdir"), "traverse = \"link\"")?;
+
+    dotr.link(src, dst)?;
+
+    // subdir should be a symlink to the source directory
+    let meta = dst.join("subdir").symlink_metadata()?;
+    assert!(meta.file_type().is_symlink());
+    assert_is_link(&dst.join("subdir"), &src.join("subdir"));
+
+    // file inside should be accessible through the directory symlink
+    assert!(dst.join("subdir").join("file").exists());
+    Ok(())
+}
+
+#[test]
+fn dotr_traverse_link_does_not_link_dotr_file() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    create_file(&src.join("a"))?;
+    write_dotr_config(src, "traverse = \"link\"")?;
+
+    // .dotr in root — traverse=link is ignored for root, but .dotr should not be
+    // linked
+    dotr.link(src, dst)?;
+
+    assert!(!dst.join(".dotr").exists());
+    assert_is_link(&dst.join("a"), &src.join("a"));
+    Ok(())
+}
+
+#[test]
+fn dotr_traverse_link_skips_content_linking() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    fs::create_dir_all(src.join("subdir").join("nested"))?;
+    create_file(&src.join("subdir").join("file"))?;
+    create_file(&src.join("subdir").join("nested").join("deep"))?;
+    write_dotr_config(&src.join("subdir"), "traverse = \"link\"")?;
+
+    dotr.link(src, dst)?;
+
+    // subdir itself is a symlink, not a real directory with individual file
+    // symlinks
+    let meta = dst.join("subdir").symlink_metadata()?;
+    assert!(meta.file_type().is_symlink());
+    Ok(())
+}
+
+#[test]
+fn dotr_traverse_link_idempotent() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    fs::create_dir_all(src.join("subdir"))?;
+    create_file(&src.join("subdir").join("file"))?;
+    write_dotr_config(&src.join("subdir"), "traverse = \"link\"")?;
+
+    dotr.link(src, dst)?;
+    dotr.link(src, dst)?;
+
+    assert_is_link(&dst.join("subdir"), &src.join("subdir"));
+    Ok(())
+}
+
+#[test]
+fn dotr_traverse_link_unlink_roundtrip() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    fs::create_dir_all(src.join("subdir"))?;
+    create_file(&src.join("subdir").join("file"))?;
+    write_dotr_config(&src.join("subdir"), "traverse = \"link\"")?;
+
+    dotr.link(src, dst)?;
+    assert!(dst.join("subdir").symlink_metadata().is_ok());
+
+    dotr.unlink(src, dst)?;
+    assert!(dst.join("subdir").symlink_metadata().is_err());
+    Ok(())
+}
+
+#[test]
+fn dotr_traverse_link_mixed_with_regular_files() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    create_file(&src.join("regular"))?;
+    fs::create_dir_all(src.join("linked_dir"))?;
+    create_file(&src.join("linked_dir").join("inside"))?;
+    write_dotr_config(&src.join("linked_dir"), "traverse = \"link\"")?;
+    fs::create_dir_all(src.join("normal_dir"))?;
+    create_file(&src.join("normal_dir").join("inside"))?;
+
+    dotr.link(src, dst)?;
+
+    // regular file linked normally
+    assert_is_link(&dst.join("regular"), &src.join("regular"));
+    // linked_dir is a directory symlink
+    let meta = dst.join("linked_dir").symlink_metadata()?;
+    assert!(meta.file_type().is_symlink());
+    // normal_dir contents are linked individually
+    assert!(dst.join("normal_dir").is_dir());
+    assert_is_link(
+        &dst.join("normal_dir").join("inside"),
+        &src.join("normal_dir").join("inside"),
+    );
+    Ok(())
+}
+
+#[test]
+fn dotr_no_config_traverses_normally() -> io::Result<()> {
+    let (src, dst) = setup();
+    let (src, dst) = (src.path(), dst.path());
+    let dotr = super::Dotr::new();
+
+    fs::create_dir_all(src.join("subdir"))?;
+    create_file(&src.join("subdir").join("file"))?;
+
+    dotr.link(src, dst)?;
+
+    // subdir should be a real directory, not a symlink
+    let meta = dst.join("subdir").symlink_metadata()?;
+    assert!(meta.file_type().is_dir());
+    assert_is_link(
+        &dst.join("subdir").join("file"),
+        &src.join("subdir").join("file"),
+    );
+    Ok(())
+}

@@ -1,10 +1,30 @@
 use std::ffi::OsStr;
-use std::fs::{self};
-use std::io::{self};
 use std::path::Path;
+use std::{fs, io};
 
 use tracing::{debug, info, trace, warn};
 use walkdir::WalkDir;
+
+const DOTR_CONFIG_FILE: &str = ".dotr";
+
+#[derive(serde::Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "lowercase")]
+enum Traverse {
+    Link,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct DirConfig {
+    traverse: Option<Traverse>,
+}
+
+fn read_dir_config(dir: &Path) -> DirConfig {
+    let config_path = dir.join(DOTR_CONFIG_FILE);
+    fs::read_to_string(&config_path)
+        .ok()
+        .and_then(|content| toml::from_str(&content).ok())
+        .unwrap_or_default()
+}
 
 pub struct Dotr {
     dry_run: bool,
@@ -33,6 +53,88 @@ impl Dotr {
         }
     }
 
+    fn link_dir(&self, src: &Path, src_base: &Path, dst_base: &Path) -> io::Result<()> {
+        let src_rel = src.strip_prefix(src_base).unwrap();
+        let dst = dst_base.join(src_rel);
+
+        if dst.exists() || dst.symlink_metadata().is_ok() {
+            if self.force {
+                if dst
+                    .symlink_metadata()
+                    .map(|m| m.file_type().is_dir())
+                    .unwrap_or(false)
+                    && !dst
+                        .symlink_metadata()
+                        .map(|m| m.file_type().is_symlink())
+                        .unwrap_or(false)
+                {
+                    return Err(io::Error::other(format!(
+                        "Can't safely remove {} as it's a real directory",
+                        dst.display()
+                    )));
+                }
+                if !self.dry_run {
+                    debug!(src = %src.display(), dst = %dst.display(), "Force removing destination for directory link");
+                    fs::remove_file(&dst)?;
+                }
+            } else {
+                if dst
+                    .symlink_metadata()
+                    .map(|m| m.file_type().is_symlink())
+                    .unwrap_or(false)
+                {
+                    let dst_link = dst.read_link()?;
+                    if dst_link == src {
+                        debug!(src = %src.display(), dst = %dst.display(), "Directory symlink already correct");
+                        return Ok(());
+                    }
+                }
+                warn!(src = %src.display(), dst = %dst.display(), "Destination already exists");
+                return Ok(());
+            }
+        } else if !self.dry_run {
+            fs::create_dir_all(dst.parent().unwrap())?;
+        }
+
+        if !self.dry_run {
+            trace!(src = %src.display(), dst = %dst.display(), "Creating symlink to directory");
+            std::os::unix::fs::symlink(src, &dst)?;
+        }
+        Ok(())
+    }
+
+    fn unlink_dir(&self, src: &Path, src_base: &Path, dst_base: &Path) -> io::Result<()> {
+        let src_rel = src.strip_prefix(src_base).unwrap();
+        let dst = dst_base.join(src_rel);
+
+        if dst.symlink_metadata().is_ok() {
+            let meta = dst.symlink_metadata()?;
+            if meta.file_type().is_symlink() {
+                let dst_link = dst.read_link()?;
+                if dst_link == src {
+                    if !self.dry_run {
+                        debug!(src = %src.display(), dst = %dst.display(), "Removing directory symlink");
+                        fs::remove_file(&dst)?;
+                    }
+                } else if self.force {
+                    if !self.dry_run {
+                        debug!(src = %src.display(), dst = %dst.display(), "Force removing directory symlink");
+                        fs::remove_file(&dst)?;
+                    }
+                } else {
+                    warn!(src = %src.display(), dst = %dst.display(), "Directory symlink points elsewhere");
+                }
+            } else if self.force {
+                warn!(src = %src.display(), dst = %dst.display(), "Destination is not a symlink, refusing to remove");
+            } else {
+                warn!(src = %src.display(), dst = %dst.display(), "Destination exists but is not a symlink");
+            }
+        } else {
+            debug!(src = %src.display(), dst = %dst.display(), "Destination doesn't exist - nothing to unlink");
+        }
+        Ok(())
+    }
+
     pub fn link_entry(
         &self,
         src: &walkdir::DirEntry,
@@ -58,9 +160,10 @@ impl Dotr {
             if dst.exists() || dst.symlink_metadata().is_ok() {
                 if self.force {
                     if dst_type.is_some_and(|t| t.is_dir()) {
-                        io::Error::other(
-                            format!("Can't safely remove {} as it's a directory", dst.display()),
-                        );
+                        io::Error::other(format!(
+                            "Can't safely remove {} as it's a directory",
+                            dst.display()
+                        ));
                     }
                     if !self.dry_run {
                         debug!(src = %src.display(), dst=%dst.display(), "Force removing destination");
@@ -149,12 +252,42 @@ impl Dotr {
         assert!(dst_base.is_absolute());
         assert!(src_base.is_absolute());
 
-        for src in WalkDir::new(&src_base)
-            .into_iter()
-            .filter_entry(should_traverse)
-            .filter_map(|e| e.ok())
-        {
-            self.link_entry(&src, &src_base, &dst_base)?;
+        let mut iter = WalkDir::new(&src_base).into_iter();
+        while let Some(entry) = iter.next() {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(e) => {
+                    warn!("Error walking: {}", e);
+                    continue;
+                }
+            };
+
+            // Skip .dotr config files
+            if entry.path().file_name() == Some(OsStr::new(DOTR_CONFIG_FILE)) {
+                continue;
+            }
+
+            if entry.file_type().is_dir() {
+                if !should_traverse(&entry) {
+                    iter.skip_current_dir();
+                    continue;
+                }
+
+                // Check .dotr config for non-root directories
+                if entry.path() != src_base.as_path() {
+                    let config = read_dir_config(entry.path());
+                    if config.traverse == Some(Traverse::Link) {
+                        debug!(path = %entry.path().display(), "Linking directory per .dotr traverse=link");
+                        self.link_dir(entry.path(), &src_base, &dst_base)?;
+                        iter.skip_current_dir();
+                        continue;
+                    }
+                }
+
+                continue;
+            }
+
+            self.link_entry(&entry, &src_base, &dst_base)?;
         }
 
         Ok(())
@@ -169,12 +302,40 @@ impl Dotr {
         assert!(dst_base.is_absolute());
         assert!(src_base.is_absolute());
 
-        for src in WalkDir::new(&src_base)
-            .into_iter()
-            .filter_entry(should_traverse)
-            .filter_map(|e| e.ok())
-        {
-            self.unlink_entry(&src, &src_base, &dst_base)?;
+        let mut iter = WalkDir::new(&src_base).into_iter();
+        while let Some(entry) = iter.next() {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(e) => {
+                    warn!("Error walking: {}", e);
+                    continue;
+                }
+            };
+
+            if entry.path().file_name() == Some(OsStr::new(DOTR_CONFIG_FILE)) {
+                continue;
+            }
+
+            if entry.file_type().is_dir() {
+                if !should_traverse(&entry) {
+                    iter.skip_current_dir();
+                    continue;
+                }
+
+                if entry.path() != src_base.as_path() {
+                    let config = read_dir_config(entry.path());
+                    if config.traverse == Some(Traverse::Link) {
+                        debug!(path = %entry.path().display(), "Unlinking directory per .dotr traverse=link");
+                        self.unlink_dir(entry.path(), &src_base, &dst_base)?;
+                        iter.skip_current_dir();
+                        continue;
+                    }
+                }
+
+                continue;
+            }
+
+            self.unlink_entry(&entry, &src_base, &dst_base)?;
         }
 
         Ok(())
