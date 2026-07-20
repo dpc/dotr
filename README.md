@@ -40,3 +40,7 @@ traverse = "link"
 ## License
 
 dotr is licensed under: MPL-2.0
+
+## AI usage disclosure
+
+[I use LLMs when working on my projects.](https://dpc.pw/posts/personal-ai-usage-disclosure/)

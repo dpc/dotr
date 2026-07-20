@@ -1,0 +1,15 @@
+# `.rustfmt.toml` is flakebox-generated and read-only — taplo would fail
+# trying to rewrite it.
+exclude = [".rustfmt.toml"]
+
+[formatting]
+reorder_arrays = true
+reorder_keys = true
+
+# Cargo.toml: keep the conventional key order inside [package] and
+# per-target tables (Cargo's idiomatic order: name, version, edition,
+# authors, ...). Sort everything else — dependencies, features, etc.
+[[rule]]
+formatting.reorder_keys = false
+include = ["**/Cargo.toml"]
+keys = ["bench", "bin", "example", "lib", "package", "test"]

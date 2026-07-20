@@ -2,14 +2,19 @@
 set -eou pipefail
 
 function job_lint() {
+  selfci step start "cargo fmt"
+  if ! nix build -L .#ci.cargoFmt ; then
+    selfci step fail
+  fi
+
   selfci step start "treefmt"
-  if ! treefmt --ci ; then
+  if ! nix build -L .#treefmt ; then
     selfci step fail
   fi
 }
 
 function job_cargo() {
-    selfci step start "cargo.lock up to date"
+    selfci step start "Cargo.lock up-to-date"
     if ! cargo update --workspace --locked -q; then
       selfci step fail
     fi
@@ -37,8 +42,7 @@ case "$SELFCI_JOB_NAME" in
     job_cargo
     ;;
   lint)
-    export -f job_lint
-    nix develop -c bash -c "job_lint"
+    job_lint
     ;;
   *)
     echo "Unknown job: $SELFCI_JOB_NAME"
