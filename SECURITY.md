@@ -37,3 +37,9 @@ prove that every requested path was inspected or changed.
 Missing, unreadable, or malformed `.dotr` files are silently treated as default
 traversal. A root-level `.dotr` file is skipped and does not change traversal.
 Treat source configuration as trusted input.
+
+## Logging
+
+Default `info` logs include source and destination base paths. `debug` and
+`trace` logs include individual filesystem paths. Treat captured standard error
+as potentially sensitive.

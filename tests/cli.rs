@@ -50,15 +50,27 @@ impl Sandbox {
     }
 
     fn run_with_paths(&self, operation: &str, flags: &[&str], src: &Path, dst: &Path) -> Output {
-        self.command()
+        self.operation_command(operation, flags, src, dst)
+            .output()
+            .unwrap()
+    }
+
+    fn operation_command(
+        &self,
+        operation: &str,
+        flags: &[&str],
+        src: &Path,
+        dst: &Path,
+    ) -> Command {
+        let mut command = self.command();
+        command
             .arg("--src-dir")
             .arg(src)
             .arg("--dst-dir")
             .arg(dst)
             .args(flags)
-            .arg(operation)
-            .output()
-            .unwrap()
+            .arg(operation);
+        command
     }
 }
 
@@ -68,10 +80,6 @@ fn write(path: impl AsRef<Path>, content: &str) {
 
 fn stderr(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
-}
-
-fn stdout(output: &Output) -> String {
-    String::from_utf8_lossy(&output.stdout).into_owned()
 }
 
 fn assert_success(output: &Output) {
@@ -383,9 +391,9 @@ fn existing_regular_file_is_preserved_without_force() {
         "destination"
     );
     assert!(
-        stdout(&output).contains("Destination already exists and is not a symlink"),
+        stderr(&output).contains("Destination already exists and is not a symlink"),
         "{}",
-        stdout(&output)
+        stderr(&output)
     );
 }
 
@@ -400,7 +408,7 @@ fn existing_wrong_symlink_is_preserved_without_force() {
 
     assert_success(&output);
     assert_symlink(sandbox.dst.join("file"), sandbox.dst.join("other"));
-    assert!(stdout(&output).contains("points elsewhere"));
+    assert!(stderr(&output).contains("points elsewhere"));
 }
 
 #[test]
@@ -602,7 +610,7 @@ fn identical_source_and_destination_preserves_file_without_force() {
         fs::read_to_string(sandbox.src.join("file")).unwrap(),
         "valuable"
     );
-    assert!(stdout(&output).contains("Destination already exists and is not a symlink"));
+    assert!(stderr(&output).contains("Destination already exists and is not a symlink"));
 }
 
 #[test]
@@ -763,7 +771,7 @@ fn unlink_preserves_regular_destination_without_force() {
         fs::read_to_string(sandbox.dst.join("file")).unwrap(),
         "valuable"
     );
-    assert!(stdout(&output).contains("Destination already exists and is a file"));
+    assert!(stderr(&output).contains("Destination already exists and is a file"));
 }
 
 #[test]
@@ -776,7 +784,7 @@ fn unlink_preserves_wrong_symlink_without_force() {
 
     assert_success(&output);
     assert_symlink(sandbox.dst.join("file"), Path::new("elsewhere"));
-    assert!(stdout(&output).contains("symlink pointing to something else"));
+    assert!(stderr(&output).contains("symlink pointing to something else"));
 }
 
 #[test]
@@ -825,7 +833,7 @@ fn force_unlink_preserves_real_directory_for_configured_directory() {
         fs::read_to_string(sandbox.dst.join("configured/valuable")).unwrap(),
         "keep"
     );
-    assert!(stdout(&output).contains("refusing to remove"));
+    assert!(stderr(&output).contains("refusing to remove"));
 }
 
 #[test]
@@ -905,36 +913,96 @@ fn unlink_destination_base_file_is_a_successful_no_op() {
 }
 
 #[test]
-fn verbosity_controls_diagnostic_output() {
+fn logs_default_to_info_on_stderr_and_verbosity_increases_detail() {
     let sandbox = Sandbox::new();
     write(sandbox.src.join("file"), "content");
+    symlink(sandbox.src.join("file"), sandbox.dst.join("file")).unwrap();
 
-    let quiet = sandbox.run("link", &[]);
+    let default = sandbox.run("link", &[]);
+    assert_success(&default);
+    assert!(default.stdout.is_empty());
+    assert!(stderr(&default).contains("Starting link operation"));
+    assert!(!stderr(&default).contains("Destination already points"));
+    assert!(!stderr(&default).contains("Walking path"));
+
+    let debug = sandbox.run("link", &["-v"]);
+    assert_success(&debug);
+    assert!(debug.stdout.is_empty());
+    assert!(stderr(&debug).contains("Destination already points"));
+    assert!(!stderr(&debug).contains("Walking path"));
+
+    let trace = sandbox.run("link", &["-vv"]);
+    assert_success(&trace);
+    assert!(trace.stdout.is_empty());
+    assert!(stderr(&trace).contains("Walking path"));
+}
+
+#[test]
+fn dotr_log_environment_controls_filtering() {
+    let sandbox = Sandbox::new();
+    write(sandbox.src.join("file"), "content");
+    let quiet = sandbox
+        .operation_command("link", &["-vv"], &sandbox.src, &sandbox.dst)
+        .env("DOTR_LOG", "error")
+        .output()
+        .unwrap();
+
     assert_success(&quiet);
     assert!(quiet.stdout.is_empty());
     assert!(quiet.stderr.is_empty());
 
     assert_success(&sandbox.run("unlink", &[]));
-    let info = sandbox.run("link", &["-vv"]);
-    assert_success(&info);
-    assert!(stdout(&info).contains("Starting link operation"));
+    let trace = sandbox
+        .operation_command("link", &[], &sandbox.src, &sandbox.dst)
+        .env("DOTR_LOG", "trace")
+        .output()
+        .unwrap();
+
+    assert_success(&trace);
+    assert!(trace.stdout.is_empty());
+    assert!(stderr(&trace).contains("Walking path"));
 }
 
 #[test]
-fn rust_log_environment_overrides_cli_verbosity() {
+fn empty_dotr_log_uses_the_default_filter() {
     let sandbox = Sandbox::new();
     write(sandbox.src.join("file"), "content");
     let output = sandbox
-        .command()
-        .env("RUST_LOG", "info")
-        .arg("--src-dir")
-        .arg(&sandbox.src)
-        .arg("--dst-dir")
-        .arg(&sandbox.dst)
-        .arg("link")
+        .operation_command("link", &[], &sandbox.src, &sandbox.dst)
+        .env("DOTR_LOG", "")
         .output()
         .unwrap();
 
     assert_success(&output);
-    assert!(stdout(&output).contains("Starting link operation"));
+    assert!(output.stdout.is_empty());
+    assert!(stderr(&output).contains("Starting link operation"));
+}
+
+#[test]
+fn invalid_dotr_log_reports_a_startup_error() {
+    let sandbox = Sandbox::new();
+    write(sandbox.src.join("file"), "content");
+    let output = sandbox
+        .operation_command("link", &[], &sandbox.src, &sandbox.dst)
+        .env("DOTR_LOG", "[invalid")
+        .output()
+        .unwrap();
+
+    assert_error(&output, "invalid DOTR_LOG filter");
+    assert_missing(sandbox.dst.join("file"));
+}
+
+#[test]
+fn rust_log_does_not_override_the_default_filter() {
+    let sandbox = Sandbox::new();
+    write(sandbox.src.join("file"), "content");
+    let output = sandbox
+        .operation_command("link", &[], &sandbox.src, &sandbox.dst)
+        .env("RUST_LOG", "off")
+        .output()
+        .unwrap();
+
+    assert_success(&output);
+    assert!(output.stdout.is_empty());
+    assert!(stderr(&output).contains("Starting link operation"));
 }

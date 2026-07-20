@@ -19,6 +19,20 @@ cargo install dotr
 dotr help
 ```
 
+## Logging
+
+Logs use `tracing`, are written to standard error, and default to the `info`
+level. Set `DOTR_LOG` to a
+[`tracing-subscriber` filter](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html)
+to control filtering, for example:
+
+```sh
+DOTR_LOG=dotr=debug dotr --dst-dir "$HOME" link
+```
+
+When `DOTR_LOG` is unset, `-v` selects `debug` and `-vv` selects `trace`.
+An empty `DOTR_LOG` uses that fallback; an invalid filter is a startup error.
+
 ## Safety
 
 `dotr` is a convenience tool for trusted, quiescent directory trees. It does

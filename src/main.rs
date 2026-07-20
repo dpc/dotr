@@ -2,27 +2,28 @@
 
 mod opts;
 
-use std::process;
+use std::{io, process};
 
+use anyhow::Context;
 use clap::Parser;
 use dotr::Dotr;
-use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use tracing_subscriber::{EnvFilter, FmtSubscriber, filter::LevelFilter};
 
 fn init_tracing(verbosity: u8) -> anyhow::Result<()> {
     let level = match verbosity {
-        0 => "error",
-        1 => "warn",
-        2 => "info",
-        3 => "debug",
-        _ => "trace",
+        0 => LevelFilter::INFO,
+        1 => LevelFilter::DEBUG,
+        _ => LevelFilter::TRACE,
     };
+    let filter = EnvFilter::builder()
+        .with_default_directive(level.into())
+        .with_env_var("DOTR_LOG")
+        .from_env()
+        .context("invalid DOTR_LOG filter")?;
 
     let subscriber = FmtSubscriber::builder()
-        // Use the environment variable, if set, falling back to the specified level if not
-        .with_env_filter(EnvFilter::new(
-            std::env::var(tracing_subscriber::EnvFilter::DEFAULT_ENV)
-                .unwrap_or_else(|_| level.to_string()),
-        ))
+        .with_env_filter(filter)
+        .with_writer(io::stderr)
         .finish();
 
     tracing::subscriber::set_global_default(subscriber)?;

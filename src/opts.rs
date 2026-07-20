@@ -24,6 +24,7 @@ pub struct Options {
     #[arg(long)]
     pub force: bool,
 
+    /// Increase logging verbosity when `DOTR_LOG` is unset or empty
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 }
