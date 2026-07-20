@@ -48,6 +48,7 @@
           "Cargo.toml"
           "Cargo.lock"
           "src"
+          "tests"
         ];
 
         buildSrc = flakeboxLib.filterSubPaths {
