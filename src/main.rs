@@ -1,31 +1,12 @@
+//! Command-line interface for `dotr`.
+
 mod opts;
 
 use std::process;
 
 use clap::Parser;
 use dotr::Dotr;
-use opts::Options;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
-
-trait DotrExt {
-    fn from_opts(opts: Options) -> Self;
-}
-
-impl DotrExt for Dotr {
-    fn from_opts(opts: Options) -> Self {
-        let mut dotr = Dotr::new();
-
-        if opts.force {
-            dotr = dotr.set_force();
-        }
-
-        if opts.dry_run {
-            dotr = dotr.set_dry_run()
-        }
-
-        dotr
-    }
-}
 
 fn init_tracing(verbosity: u8) -> anyhow::Result<()> {
     let level = match verbosity {
@@ -54,7 +35,13 @@ fn run() -> anyhow::Result<()> {
 
     init_tracing(opts.verbose)?;
 
-    let dotr = Dotr::from_opts(opts.clone());
+    let mut dotr = Dotr::new();
+    if opts.force {
+        dotr = dotr.set_force();
+    }
+    if opts.dry_run {
+        dotr = dotr.set_dry_run();
+    }
 
     match opts.command {
         opts::Command::Link => dotr.link(&opts.src_dir, &opts.dst_dir)?,
@@ -65,8 +52,8 @@ fn run() -> anyhow::Result<()> {
 }
 
 fn main() {
-    if let Err(e) = run() {
-        eprintln!("Error: {}", e);
+    if let Err(error) = run() {
+        eprintln!("Error: {error}");
         process::exit(-1);
     }
 }

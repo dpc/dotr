@@ -23,6 +23,17 @@ walkdir = "2"
 [dev-dependencies]
 tempfile = "3"
 
+[lints.rust]
+missing_docs = "warn"
+unsafe_code = "deny"
+unused = { level = "deny", priority = -1 }
+
+[lints.clippy]
+dbg_macro = "deny"
+nursery = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+todo = "deny"
+
 [profile.ci]
 debug = "line-tables-only"
 incremental = false

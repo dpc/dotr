@@ -23,7 +23,19 @@ unless the task explicitly updates the generated tooling.
   in `src/main.rs` and `src/opts.rs`.
 - Preserve symlink semantics. In particular, use `symlink_metadata` when a
   dangling link must count as an existing destination.
+- Read `SECURITY.md` before changing traversal, symlink, force, or path-boundary
+  behavior. Preserve its documented reliability model unless the task
+  explicitly changes behavior.
 - Add tests with temporary source and destination directories for behavioral
   changes. Cover both normal and `force`/`dry_run` behavior when relevant.
 - Do not perform real dotfile operations against a developer's home directory
   in tests or validation.
+
+## Test strategy
+
+- `src/tests.rs` exercises the library API but remains attached to the binary
+  target for historical compatibility.
+- `tests/cli.rs` is the authoritative black-box behavior characterization
+  suite. Add CLI cases for observable behavior and filesystem safety contracts.
+- Duplicate coverage between the two layers only when it protects a public
+  library contract and the corresponding end-to-end behavior.

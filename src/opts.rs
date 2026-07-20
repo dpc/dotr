@@ -2,13 +2,13 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-#[derive(Debug, Copy, Clone, Subcommand)]
+#[derive(Subcommand)]
 pub enum Command {
     Link,
     Unlink,
 }
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser)]
 #[command(version, about)]
 pub struct Options {
     #[arg(long)]
@@ -20,10 +20,10 @@ pub struct Options {
     /// Dry Run
     #[arg(long)]
     pub dry_run: bool,
-    /// Force file deletion/overwritting
+    /// Replace or delete existing non-directory destinations
     #[arg(long)]
     pub force: bool,
 
-    #[clap(short, long, action = clap::ArgAction::Count)]
+    #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 }

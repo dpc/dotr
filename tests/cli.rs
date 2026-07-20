@@ -1,3 +1,5 @@
+//! End-to-end characterization tests for the `dotr` command-line interface.
+
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::os::unix::ffi::OsStringExt;
@@ -106,6 +108,17 @@ fn assert_symlink(path: impl AsRef<Path>, target: impl AsRef<Path>) {
 
 fn assert_missing(path: impl AsRef<Path>) {
     assert!(fs::symlink_metadata(path).is_err());
+}
+
+fn configured_directory_conflicts() -> Sandbox {
+    let sandbox = Sandbox::new();
+    for name in ["wrong-link", "regular"] {
+        fs::create_dir_all(sandbox.src.join(name)).unwrap();
+        write(sandbox.src.join(name).join(".dotr"), "traverse = \"link\"");
+    }
+    symlink(OsStr::new("elsewhere"), sandbox.dst.join("wrong-link")).unwrap();
+    write(sandbox.dst.join("regular"), "valuable");
+    sandbox
 }
 
 #[test]
@@ -463,6 +476,48 @@ fn force_refuses_to_replace_a_real_directory_with_a_configured_directory_link() 
 }
 
 #[test]
+fn configured_directory_conflicts_are_preserved_without_force() {
+    let sandbox = configured_directory_conflicts();
+
+    let output = sandbox.run("link", &[]);
+
+    assert_success(&output);
+    assert_symlink(sandbox.dst.join("wrong-link"), Path::new("elsewhere"));
+    assert_eq!(
+        fs::read_to_string(sandbox.dst.join("regular")).unwrap(),
+        "valuable"
+    );
+}
+
+#[test]
+fn force_replaces_configured_directory_conflicts() {
+    let sandbox = configured_directory_conflicts();
+
+    let output = sandbox.run("link", &["--force"]);
+
+    assert_success(&output);
+    assert_symlink(
+        sandbox.dst.join("wrong-link"),
+        sandbox.src.join("wrong-link"),
+    );
+    assert_symlink(sandbox.dst.join("regular"), sandbox.src.join("regular"));
+}
+
+#[test]
+fn force_dry_run_preserves_configured_directory_conflicts() {
+    let sandbox = configured_directory_conflicts();
+
+    let output = sandbox.run("link", &["--force", "--dry-run"]);
+
+    assert_success(&output);
+    assert_symlink(sandbox.dst.join("wrong-link"), Path::new("elsewhere"));
+    assert_eq!(
+        fs::read_to_string(sandbox.dst.join("regular")).unwrap(),
+        "valuable"
+    );
+}
+
+#[test]
 fn dry_run_creates_no_links_or_parent_directories() {
     let sandbox = Sandbox::new();
     fs::create_dir_all(sandbox.src.join("nested/deep")).unwrap();
@@ -682,6 +737,20 @@ fn unlink_configured_directory_link_round_trips() {
 }
 
 #[test]
+fn unlink_source_symlink_conflict_requires_force() {
+    let sandbox = Sandbox::new();
+    write(sandbox.src.join("target"), "target");
+    symlink(OsStr::new("target"), sandbox.src.join("link")).unwrap();
+    symlink(OsStr::new("elsewhere"), sandbox.dst.join("link")).unwrap();
+
+    assert_success(&sandbox.run("unlink", &[]));
+    assert_symlink(sandbox.dst.join("link"), Path::new("elsewhere"));
+
+    assert_success(&sandbox.run("unlink", &["--force"]));
+    assert_missing(sandbox.dst.join("link"));
+}
+
+#[test]
 fn unlink_preserves_regular_destination_without_force() {
     let sandbox = Sandbox::new();
     write(sandbox.src.join("file"), "source");
@@ -757,6 +826,32 @@ fn force_unlink_preserves_real_directory_for_configured_directory() {
         "keep"
     );
     assert!(stdout(&output).contains("refusing to remove"));
+}
+
+#[test]
+fn unlink_configured_directory_conflicts_preserve_force_safety_rules() {
+    let sandbox = configured_directory_conflicts();
+
+    assert_success(&sandbox.run("unlink", &["--force", "--dry-run"]));
+    assert_symlink(sandbox.dst.join("wrong-link"), Path::new("elsewhere"));
+    assert_eq!(
+        fs::read_to_string(sandbox.dst.join("regular")).unwrap(),
+        "valuable"
+    );
+
+    assert_success(&sandbox.run("unlink", &[]));
+    assert_symlink(sandbox.dst.join("wrong-link"), Path::new("elsewhere"));
+    assert_eq!(
+        fs::read_to_string(sandbox.dst.join("regular")).unwrap(),
+        "valuable"
+    );
+
+    assert_success(&sandbox.run("unlink", &["--force"]));
+    assert_missing(sandbox.dst.join("wrong-link"));
+    assert_eq!(
+        fs::read_to_string(sandbox.dst.join("regular")).unwrap(),
+        "valuable"
+    );
 }
 
 #[test]
