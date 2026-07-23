@@ -78,11 +78,13 @@
 
             tests = craneLib.cargoNextest {
               cargoArtifacts = workspace;
+              doInstallCargoArtifacts = false;
               cargoNextestExtraArgs = "--workspace";
             };
 
             clippy = craneLib.cargoClippy {
               cargoArtifacts = workspaceDeps;
+              doInstallCargoArtifacts = false;
             };
 
             cargoFmt = craneLib.cargoFmt { };
